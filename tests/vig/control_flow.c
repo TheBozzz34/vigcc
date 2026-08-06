@@ -1,3 +1,6 @@
+/* Loops, branches and the paths that run zero times. */
+#include <vig.h>
+
 int count_to(int limit) {
     int value = 0;
 
@@ -6,10 +9,21 @@ int count_to(int limit) {
     return value;
 }
 
-int main(void) {
-    int zero = 0;
+int classify(int value) {
+    if (value < 0)
+        return -1;
+    else if (value == 0)
+        return 0;
+    else
+        return 1;
+}
 
-    if (count_to(7) != 7)
-        return 1 / zero;
+int main(void) {
+    __vig_print(count_to(7));
+    __vig_print(count_to(0));
+    __vig_print(count_to(-3));
+    __vig_print(classify(-5));
+    __vig_print(classify(0));
+    __vig_print(classify(9));
     return 0;
 }

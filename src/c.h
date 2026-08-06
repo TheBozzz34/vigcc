@@ -33,7 +33,10 @@
 #define roundup(x,n) (((x)+((n)-1))&(~((n)-1)))
 #define mkop(op,ty) (specific((op) + ttob(ty)))
 
-#define extend(x,ty) ((x)&(1<<(8*(ty)->size-1)) ? (x)|((~0UL)<<(8*(ty)->size-1)) : (x)&ones(8*(ty)->size))
+/* The sign bit is computed with an unsigned 1.  A signed `1<<31' overflows the
+ * int it starts as, which is undefined and traps under a sanitizer.  The other
+ * two shifts here already use `~0UL' and are unaffected. */
+#define extend(x,ty) ((x)&(1UL<<(8*(ty)->size-1)) ? (x)|((~0UL)<<(8*(ty)->size-1)) : (x)&ones(8*(ty)->size))
 #define ones(n) ((n)>=8*sizeof (unsigned long) ? ~0UL : ~((~0UL)<<(n)))
 
 #define isqual(t)     ((t)->op >= CONST)

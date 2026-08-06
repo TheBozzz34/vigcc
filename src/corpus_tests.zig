@@ -2,9 +2,14 @@
 //!
 //! Each source has a same-named `.expected` file.  The source goes through the
 //! public `vigcc` command, whose assembler invocation enables stack checking;
-//! the resulting program then runs in the VM.  Empty expected files are useful
-//! while the integer-only C subset has no standard I/O runtime: they still prove
-//! that a compiled program assembles, verifies and reaches `halt`.
+//! the resulting program then runs in the VM.
+//!
+//! Every case prints the values it computes, with the `__vig_print` family from
+//! <vig.h>, and the `.expected` file holds what those values are.  A case that
+//! only ran to `halt` would say nothing about what it computed: a code generator
+//! can turn an `add` into a `sub` and still produce a program that verifies and
+//! stops.  The recorded output is therefore the contract, and each number in it
+//! was worked out by hand before it was recorded.
 
 const std = @import("std");
 const options = @import("corpus_options");
@@ -12,6 +17,7 @@ const options = @import("corpus_options");
 const cases = [_][]const u8{
     "add_one",
     "control_flow",
+    "intrinsics",
     "pointer_array",
     "struct_copy",
     "struct_call",

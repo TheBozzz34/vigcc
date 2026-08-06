@@ -1,3 +1,6 @@
+/* Arrays, pointer arithmetic and pointer difference. */
+#include <vig.h>
+
 int values[3] = { 10, 20, 30 };
 
 int total(void) {
@@ -12,9 +15,13 @@ int total(void) {
 }
 
 int main(void) {
-    int zero = 0;
+    int *cursor = values + 2;
 
-    if (total() != 60)
-        return 1 / zero;
+    __vig_print(total());
+    __vig_print(values[1]);
+    __vig_print(*(values + 2));
+    __vig_print(*cursor);
+    /* A pointer difference is a count of elements, not of bytes. */
+    __vig_print((int)(cursor - values));
     return 0;
 }

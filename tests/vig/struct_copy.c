@@ -1,3 +1,6 @@
+/* Whole-structure assignment, which the backend lowers to a byte copy. */
+#include <vig.h>
+
 struct record {
     char tag;
     int value;
@@ -6,12 +9,15 @@ struct record {
 int main(void) {
     struct record source;
     struct record copy;
-    int zero = 0;
 
     source.tag = 7;
     source.value = 35;
     copy = source;
-    if (copy.tag != 7 || copy.value != 35)
-        return 1 / zero;
+    __vig_print(copy.tag);
+    __vig_print(copy.value);
+
+    /* The copy is independent of what it was made from. */
+    source.value = 0;
+    __vig_print(copy.value);
     return 0;
 }

@@ -17,6 +17,43 @@ static void unsupported(Node p) {
 	error("vig: unsupported operator %s\n", opname(p->op));
 }
 
+/* The intrinsics.
+ *
+ * VIG has no linker, so a runtime routine written in VIGasm cannot be brought
+ * into a program that calls it.  Therefore the few operations that a C program
+ * cannot express -- the ones that are VM instructions and nothing else -- are
+ * emitted at the call instead of being called.  A program declares them like
+ * any other function, in <vig.h>.
+ *
+ * Each replacement leaves the stack as a call to a void function would: the
+ * argument is gone and nothing takes its place.  `print` and `print_string`
+ * leave what they printed, so each of those needs a `pop`.
+ */
+static const struct {
+	char *name;
+	char *code;
+} intrinsics[] = {
+	{ "__vig_print",        "print\npop\n"        },
+	{ "__vig_print_hex",    "print_hex\npop\n"    },
+	{ "__vig_print_string", "print_string\npop\n" },
+	/* Raw byte output, which is what a formatted-output routine written in C
+	 * needs: it writes one byte and adds nothing of its own. */
+	{ "__vig_write",        "write_byte\n"        },
+};
+
+/* The instructions that a call to `p` becomes, or null if `p` is an ordinary
+ * function. */
+static char *intrinsic(Symbol p) {
+	int i;
+
+	if (p == NULL || p->name == NULL)
+		return NULL;
+	for (i = 0; i < NELEMS(intrinsics); i++)
+		if (strcmp(p->name, intrinsics[i].name) == 0)
+			return intrinsics[i].code;
+	return NULL;
+}
+
 static void reject_float(void) {
 	error("vig: floating-point operations are not supported\n");
 }
@@ -219,7 +256,15 @@ static void dumptree(Node p) {
 	case CALL:
 		assert(p->kids[0] && !p->kids[1]);
 		if (specific(p->kids[0]->op) == ADDRG+P) {
+			char *code = intrinsic(p->kids[0]->syms[0]);
+
 			assert(p->kids[0]->syms[0] && p->kids[0]->syms[0]->x.name);
+			/* An intrinsic is its instructions, so there is no call and no
+			 * result to discard afterwards. */
+			if (code != NULL) {
+				print("%s", code);
+				return;
+			}
 			print("call %s\n", p->kids[0]->syms[0]->x.name);
 		} else {
 			dumptree(p->kids[0]);
@@ -409,6 +454,10 @@ static void I(global)(Symbol p) {
 }
 
 static void I(import)(Symbol p) {
+	/* An intrinsic is declared like an external function and defined nowhere,
+	 * because its definition is the instruction that replaces the call. */
+	if (intrinsic(p) != NULL)
+		return;
 	error("vig: external symbol %s requires a VIG runtime declaration\n", p->name);
 }
 

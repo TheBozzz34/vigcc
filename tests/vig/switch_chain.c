@@ -1,3 +1,6 @@
+/* A switch, which the backend compiles to a chain of comparisons. */
+#include <vig.h>
+
 int select_value(int value) {
     switch (value) {
     case 0: return 10;
@@ -10,9 +13,11 @@ int select_value(int value) {
 }
 
 int main(void) {
-    int zero = 0;
+    int i;
 
-    if (select_value(4) != 14 || select_value(9) != 99)
-        return 1 / zero;
+    for (i = 0; i < 5; i++)
+        __vig_print(select_value(i));
+    __vig_print(select_value(9));
+    __vig_print(select_value(-1));
     return 0;
 }
