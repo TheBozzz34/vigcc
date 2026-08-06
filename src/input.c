@@ -4,6 +4,7 @@ static char rcsid[] = "$Id$";
 
 static void pragma(void);
 static void resynch(void);
+static char *pragma_string(void);
 
 static int bsize;
 static unsigned char buffer[MAXLINE+1 + BUFSIZE+1];
@@ -82,9 +83,31 @@ static void ident(void) {
 		cp++;
 }
 
-/* pragma - handle #pragma ref id... */
+/* A pragma's strings are metadata, not C expressions.  Read them directly so
+ * the C lexer does not join the two adjacent string literals as it normally
+ * must for an expression. */
+static char *pragma_string(void) {
+	char *start;
+
+	while (*cp == ' ' || *cp == '\t')
+		cp++;
+	if (*cp != '"') {
+		error("expected string in `#pragma vig import'\n");
+		return NULL;
+	}
+	start = (char *)++cp;
+	while (*cp != '"' && *cp != '\n' && *cp != '\0')
+		cp++;
+	if (*cp != '"') {
+		error("missing closing quote in `#pragma vig import'\n");
+		return NULL;
+	}
+	return stringn(start, (char *)cp++ - start);
+}
+
+/* pragma - handle #pragma ref id... and target-specific directives. */
 static void pragma(void) {
-	if ((t = gettok()) == ID && strcmp(token, "ref") == 0)
+	if ((t = gettok()) == ID && strcmp(token, "ref") == 0) {
 		for (;;) {
 			while (*cp == ' ' || *cp == '\t')
 				cp++;
@@ -93,8 +116,43 @@ static void pragma(void) {
 			if ((t = gettok()) == ID && tsym) {
 				tsym->ref++;
 				use(tsym, src);
-			}	
+			}
 		}
+	}
+	else if (t == ID && strcmp(token, "vig") == 0) {
+		char *name, *library, *symbol;
+
+		if ((t = gettok()) != ID || strcmp(token, "import") != 0) {
+			error("expected `import' after `#pragma vig'\n");
+			return;
+		}
+		if ((t = gettok()) != ID) {
+			error("expected C identifier in `#pragma vig import'\n");
+			return;
+		}
+		name = string(token);
+		if ((t = gettok()) != ',') {
+			error("expected comma after C identifier in `#pragma vig import'\n");
+			return;
+		}
+		library = pragma_string();
+		if (library == NULL)
+			return;
+		while (*cp == ' ' || *cp == '\t')
+			cp++;
+		if (*cp != ',') {
+			error("expected comma after library string in `#pragma vig import'\n");
+			return;
+		}
+		cp++;
+		symbol = pragma_string();
+		if (symbol == NULL)
+			return;
+		if (IR->foreign_import == NULL)
+			error("`#pragma vig import' is only supported by the VIG target\n");
+		else
+			(*IR->foreign_import)(name, library, symbol);
+	}
 }
 
 /* resynch - set line number/file name in # n [ "file" ], #pragma, etc. */

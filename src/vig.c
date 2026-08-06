@@ -13,6 +13,43 @@ static int function_returns_value;
 static Symbol struct_return_pointer;
 static void dumptree(Node);
 
+/* A `#pragma vig import' names the native library and symbol that a C function
+ * declaration represents.  lcc parses pragmas before it finalizes unresolved
+ * externals, so retaining this small table here lets the normal import pass
+ * emit the matching VIGasm `extern' declaration. */
+typedef struct ForeignImport ForeignImport;
+struct ForeignImport {
+	char *name;
+	char *library;
+	char *symbol;
+	ForeignImport *link;
+};
+static ForeignImport *foreign_imports;
+
+static ForeignImport *foreign_import(char *name) {
+	ForeignImport *entry;
+
+	for (entry = foreign_imports; entry; entry = entry->link)
+		if (strcmp(entry->name, name) == 0)
+			return entry;
+	return NULL;
+}
+
+static void I(foreign_import)(char *name, char *library, char *symbol) {
+	ForeignImport *entry;
+
+	if (foreign_import(name) != NULL) {
+		error("vig: foreign import %s is declared more than once\n", name);
+		return;
+	}
+	NEW(entry, PERM);
+	entry->name = name;
+	entry->library = library;
+	entry->symbol = symbol;
+	entry->link = foreign_imports;
+	foreign_imports = entry;
+}
+
 static void unsupported(Node p) {
 	error("vig: unsupported operator %s\n", opname(p->op));
 }
@@ -138,6 +175,71 @@ static void emit_store(int size) {
 	error("vig: store of %d bytes is not supported\n", size);
 }
 
+/* The VIG foreign ABI accepts 32-bit signed and unsigned integers and guest
+ * pointers.  A C pointer is deliberately always `ptr': it may be an output
+ * pointer or a string in a frame, and the C declaration alone cannot safely
+ * promise the stricter `cstr' lifetime rule. */
+static char *foreign_argument_type(Type ty) {
+	ty = unqual(ty);
+	if (isptr(ty)) {
+		if (isfunc(ty->type)) {
+			error("vig: foreign callbacks are not supported\n");
+			return NULL;
+		}
+		return "ptr";
+	}
+	if (isenum(ty) || isint(ty))
+		return isunsigned(ty) ? "u32" : "i32";
+	error("vig: foreign argument type %t is not supported\n", ty);
+	return NULL;
+}
+
+static int foreign_return_type(Type ty) {
+	ty = unqual(ty);
+	if (ty == voidtype)
+		return 1;
+	if ((isenum(ty) || isint(ty)) && ty->size == 4)
+		return 1;
+	error("vig: foreign result type %t is not supported (use void or a 32-bit integer)\n", ty);
+	return 0;
+}
+
+static int emit_foreign_extern(Symbol p, ForeignImport *entry) {
+	Type *proto;
+	int i;
+
+	if (!isfunc(p->type)) {
+		error("vig: foreign import %s is not a function\n", p->name);
+		return 0;
+	}
+	if (p->type->u.f.oldstyle || p->type->u.f.proto == NULL) {
+		error("vig: foreign import %s requires a prototype\n", p->name);
+		return 0;
+	}
+	if (variadic(p->type)) {
+		error("vig: variadic foreign import %s is not supported\n", p->name);
+		return 0;
+	}
+	if (!foreign_return_type(freturn(p->type)))
+		return 0;
+	proto = p->type->u.f.proto;
+	if (proto[0] == voidtype)
+		proto++;
+	for (i = 0; proto[i]; i++) {
+		if (i == 4) {
+			error("vig: foreign import %s has more than four arguments\n", p->name);
+			return 0;
+		}
+		if (foreign_argument_type(proto[i]) == NULL)
+			return 0;
+	}
+	print("extern %s %s %s", p->x.name, entry->library, entry->symbol);
+	for (i = 0; proto[i]; i++)
+		print(" %s", foreign_argument_type(proto[i]));
+	print("\n");
+	return 1;
+}
+
 static void emit_local_address(Symbol p) {
 	int off = p->x.offset;
 
@@ -260,16 +362,26 @@ static void dumptree(Node p) {
 	case CALL:
 		assert(p->kids[0] && !p->kids[1]);
 		if (specific(p->kids[0]->op) == ADDRG+P) {
-			char *code = intrinsic(p->kids[0]->syms[0]);
+			char *code;
+			ForeignImport *entry;
 
 			assert(p->kids[0]->syms[0] && p->kids[0]->syms[0]->x.name);
+			code = intrinsic(p->kids[0]->syms[0]);
+			entry = foreign_import(p->kids[0]->syms[0]->name);
 			/* An intrinsic is its instructions, so there is no call and no
 			 * result to discard afterwards. */
 			if (code != NULL) {
 				print("%s", code);
 				return;
 			}
-			print("call %s\n", p->kids[0]->syms[0]->x.name);
+			if (entry != NULL) {
+				print("foreign_call %s\n", p->kids[0]->syms[0]->x.name);
+				/* The foreign ABI always produces its 32-bit result.  A C void
+				 * call must discard that result before the next statement. */
+				if (optype(p->op) == V)
+					print("pop\n");
+			} else
+				print("call %s\n", p->kids[0]->syms[0]->x.name);
 		} else {
 			dumptree(p->kids[0]);
 			print("call_indirect\n");
@@ -470,10 +582,16 @@ static void I(global)(Symbol p) {
 }
 
 static void I(import)(Symbol p) {
+	ForeignImport *entry = foreign_import(p->name);
+
 	/* An intrinsic is declared like an external function and defined nowhere,
 	 * because its definition is the instruction that replaces the call. */
 	if (intrinsic(p) != NULL)
 		return;
+	if (entry != NULL) {
+		(void)emit_foreign_extern(p, entry);
+		return;
+	}
 	error("vig: external symbol %s requires a VIG runtime declaration\n", p->name);
 }
 
@@ -542,4 +660,6 @@ Interface vigIR = {
 	0, /* I(stabline) */
 	0, /* I(stabsym) */
 	0, /* I(stabtype) */
+	{ 0 }, /* Xinterface */
+	I(foreign_import),
 };

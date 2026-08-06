@@ -26,4 +26,20 @@ void __vig_write(int byte);
  * call and then dropped: VIG keeps no exit status. */
 void __vig_halt(int status);
 
+/* Native-library imports
+ *
+ * Map an ordinary, fully-prototyped C function declaration to a VIG foreign
+ * import with a pragma immediately before its declaration:
+ *
+ *   #pragma vig import GetSystemTime, "kernel32.dll", "GetSystemTime"
+ *   extern void GetSystemTime(struct systemtime *out);
+ *
+ * The first name is the C function name.  The strings name the host library
+ * and exported symbol, so they may differ.  VIG derives each foreign argument
+ * from the C prototype: signed integers become `i32', unsigned integers become
+ * `u32', and pointers become `ptr'.  The foreign ABI permits at most four
+ * arguments; it supports only void or 32-bit integer results, no varargs,
+ * callbacks, floating-point values, aggregates by value, or pointer results.
+ */
+
 #endif

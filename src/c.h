@@ -150,6 +150,9 @@ void (*stabline) (Coordinate *);
 void (*stabsym)  (Symbol);
 void (*stabtype) (Symbol);
 	Xinterface x;
+/* Target-specific source directives.  The VIG target uses this to remember a
+ * native-library import until `import' runs at the end of the translation. */
+void (*foreign_import)(char *name, char *library, char *symbol);
 } Interface;
 typedef struct binding {
 	char *name;
