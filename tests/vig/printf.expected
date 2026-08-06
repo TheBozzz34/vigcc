@@ -1,0 +1,18 @@
+plain text
+d:0 42 -7 -2147483648
+u:0 2147483648 4294967295
+x:ff FF 0 DEADBEEF
+c:abc
+s:hello||z|
+pct:%
+w:[   42][42   ][00042]
+w:[  -42][-42  ][-0042]
+w:[5][         5][5         ]
+w:[    ab][ab    ][abcdef]
+mix:7/mid/Z/beef
+0:0 100:64 200:c8 300:12c 
+abc
+ret=4
+puts adds its own newline
+!
+bad:%q

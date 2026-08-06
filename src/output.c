@@ -17,7 +17,10 @@ static char *outd(long n, FILE *f, char *bp) {
 
 	*--s = '\0';
 	if (n < 0)
-		m = -n;
+		/* Negating as unsigned is well defined for every value.  Negating the
+		 * most negative one as a long is not, and a program that writes
+		 * INT_MIN as a literal reaches exactly that. */
+		m = -(unsigned long)n;
 	else
 		m = n;
 	do

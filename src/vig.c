@@ -386,8 +386,20 @@ static void dumptree(Node p) {
 }
 
 static void I(emit)(Node p) {
-	for (; p; p = p->link)
+	for (; p; p = p->link) {
 		dumptree(p);
+		/* A call at the root of the forest is a call whose result nothing
+		 * wants: `printf(...);' as a statement.  One that is wanted appears as
+		 * a child of whatever wants it, so it is never seen here.  The value
+		 * is on the operand stack either way, and an unwanted one has to come
+		 * off before the next statement runs.
+		 *
+		 * A void call leaves nothing, and a struct-returning call is discarded
+		 * where it is emitted, because its result reached the caller through
+		 * the hidden pointer instead. */
+		if (generic(p->op) == CALL && optype(p->op) != V)
+			print("pop\n");
+	}
 }
 
 static void I(export)(Symbol p) {

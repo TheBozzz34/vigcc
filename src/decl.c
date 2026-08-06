@@ -743,10 +743,16 @@ static void funcdefn(int sclass, char *id, Type ty, Symbol params[], Coordinate 
 		Symbol values = dclparam(0, string("__vig_va_args"), ptr(voidtype), &pt);
 		Symbol *a;
 
+		/* Both lists are walked until a null entry, and `newarray' hands out
+		 * arena memory that it does not clear.  Therefore each one needs its
+		 * terminator written, not merely room left for it: a reused block
+		 * leaves whatever was there before, and the walk then runs off the
+		 * end of the array. */
 		a = newarray(n + 3, sizeof *a, FUNC);
 		memcpy(a, callee, n*sizeof *a);
 		a[n] = count;
 		a[n + 1] = values;
+		a[n + 2] = NULL;
 		callee = a;
 		a = newarray(n + 3, sizeof *a, FUNC);
 		memcpy(a, caller, n*sizeof *a);
@@ -756,6 +762,7 @@ static void funcdefn(int sclass, char *id, Type ty, Symbol params[], Coordinate 
 		NEW(a[n + 1], FUNC);
 		*a[n + 1] = *values;
 		a[n + 1]->sclass = AUTO;
+		a[n + 2] = NULL;
 		caller = a;
 		n += 2;
 	}

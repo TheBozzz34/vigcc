@@ -102,9 +102,17 @@ Tree call(Tree f, Type fty, Coordinate src) {
 		if (count > 0) {
 			Symbol slots = temporary(AUTO, array(inttype, count, inttype->align));
 			for (i = 0; i < count; i++) {
-				Tree address = simplify(ADD+P, ptr(inttype),
+				/* Every variable argument has been promoted, so each one is
+				 * four bytes and occupies one slot.  What it *is* still
+				 * differs: `printf("%s", text)' passes a pointer through the
+				 * same array that carries an int.  Therefore the address is
+				 * cast to the argument's own type before the store, rather
+				 * than the argument being forced into the array's. */
+				Type slot = varargs[i]->type;
+				Tree address = simplify(ADD+P, voidptype,
 					pointer(idtree(slots)), consttree(4*i, signedptr));
-				Tree store = asgntree(ASGN, rvalue(address), varargs[i]);
+				Tree store = asgntree(ASGN,
+					rvalue(cast(address, ptr(slot))), varargs[i]);
 				prep = prep ? tree(RIGHT, voidtype, prep, root(store)) : root(store);
 			}
 			values = pointer(idtree(slots));
