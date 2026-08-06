@@ -1,39 +1,72 @@
 /* Behaviour that a host C library cannot be compared against: this heap has a
- * fixed size, so running it out is a defined and reachable thing to do. */
+ * fixed size, so running it out is a defined and reachable thing to do.
+ *
+ * The two coalescing rounds free in opposite orders on purpose.  malloc splits
+ * blocks off the end of the free run, so successive blocks come back at
+ * descending addresses; freeing them in ascending index order therefore only
+ * ever meets a free *upper* neighbour, and the lower-neighbour branch of free
+ * is never taken.  Freeing in descending index order takes the other one.  A
+ * round in one direction alone passes with half of free deleted.
+ */
 #define VIG_HEAP_SIZE 4096
 #include <stdio.h>
 #include <stdlib.h>
 
-int main(void) {
-    void *blocks[64];
+#define BLOCKS 128
+#define BLOCK_BYTES 64
+#define BIG_BYTES 2048
+
+/* Take blocks until the heap is empty, then give them all back in the order
+ * `descending' asks for, and report whether one large block can then be had.
+ * That is only true if the small ones were rejoined into a single run.
+ *
+ * The heap has to be taken to exhaustion for this to prove anything: while any
+ * large free run is left over, the big request is satisfied from that and says
+ * nothing about whether the small blocks were rejoined at all. */
+static int round_trip(int descending) {
+    void *blocks[BLOCKS];
     void *big;
-    int i, taken;
+    int i, taken = 0;
 
-    /* A request larger than the whole heap fails rather than trapping. */
-    printf("toobig:%d\n", malloc(VIG_HEAP_SIZE + 1) == NULL);
-
-    /* Fill the heap.  The count is not the interesting part; that it stops
-     * rather than running off the end is. */
-    taken = 0;
-    for (i = 0; i < 64; i++) {
-        blocks[i] = malloc(64);
+    for (i = 0; i < BLOCKS; i++) {
+        blocks[i] = malloc(BLOCK_BYTES);
         if (blocks[i] == NULL)
             break;
         taken++;
     }
-    printf("filled:%d exhausted:%d\n", taken > 0, malloc(64) == NULL);
+    if (taken == 0 || taken == BLOCKS)
+        return 0;	/* the heap did not run out: the round proves nothing */
+    if (descending) {
+        i = taken;
+        while (i > 0) {
+            i--;
+            free(blocks[i]);
+        }
+    } else {
+        for (i = 0; i < taken; i++)
+            free(blocks[i]);
+    }
 
-    /* Give it all back.  A block bigger than any one of them can then be had,
-     * which is only true if free rejoined them into one run. */
-    for (i = 0; i < taken; i++)
-        free(blocks[i]);
-    big = malloc(2048);
-    printf("coalesced:%d\n", big != NULL);
+    big = malloc(BIG_BYTES);
+    if (big == NULL)
+        return 0;
     free(big);
+    return 1;
+}
 
-    /* And the heap is still usable afterwards. */
+int main(void) {
+    void *big;
+
+    /* A request larger than the whole heap fails rather than trapping. */
+    printf("toobig:%d\n", malloc(VIG_HEAP_SIZE + 1) == NULL);
+
+    printf("coalesce_up:%d\n", round_trip(0));
+    printf("coalesce_down:%d\n", round_trip(1));
+
+    /* The heap survives both rounds and is still whole. */
     big = malloc(2048);
-    printf("again:%d\n", big != NULL);
+    printf("intact:%d\n", big != NULL);
+    free(big);
 
     printf("before exit\n");
     exit(0);
