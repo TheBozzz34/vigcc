@@ -1,0 +1,11 @@
+.{
+    .name = .vigcc,
+    .version = "0.1.0",
+    .fingerprint = 0x216d8fd86fbbbe70,
+    .minimum_zig_version = "0.17.0-dev.1543+6db520a4c",
+    .dependencies = .{
+        .vig_assembler = .{ .path = "../vig-assembler" },
+        .vig = .{ .path = "../vig" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "cpp", "lburg", "src", "tests", "tst" },
+}

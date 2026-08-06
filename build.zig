@@ -54,11 +54,85 @@ pub fn build(b: *std.Build) void {
         rcc.root_module.addCSourceFile(.{ .file = source, .flags = c_flags });
     }
 
+    const cpp = b.addExecutable(.{
+        .name = "cpp",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+    cpp.root_module.addCSourceFiles(.{
+        .root = b.path("cpp"),
+        .files = &.{
+            "cpp.c", "lex.c", "nlist.c", "tokens.c", "macro.c", "eval.c",
+            "include.c", "hideset.c", "getopt.c", "unix.c",
+        },
+        .flags = c_flags,
+    });
+    cpp.root_module.addIncludePath(b.path("cpp"));
+
+    const assembler_package = b.dependency("vig_assembler", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const vigasm = assembler_package.artifact("vigasm");
+
+    const tool_options = b.addOptions();
+    tool_options.addOptionPath("cpp_path", cpp.getEmittedBin());
+    tool_options.addOptionPath("rcc_path", rcc.getEmittedBin());
+    tool_options.addOptionPath("vigasm_path", vigasm.getEmittedBin());
+    const tool_options_module = tool_options.createModule();
+
+    const vigcc = b.addExecutable(.{
+        .name = "vigcc",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/vigcc.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "tool_options", .module = tool_options_module }},
+        }),
+    });
+
     b.installArtifact(lburg);
     b.installArtifact(rcc);
+    b.installArtifact(cpp);
+    b.installArtifact(vigcc);
+    const install_vigasm = b.addInstallArtifact(vigasm, .{});
+    b.getInstallStep().dependOn(&install_vigasm.step);
 
     const rcc_step = b.step("rcc", "Build rcc and its lburg-generated tables");
     rcc_step.dependOn(&rcc.step);
+
+    const vm_package = b.dependency("vig", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const vig = vm_package.artifact("vig");
+    const corpus_options = b.addOptions();
+    corpus_options.addOptionPath("vigcc_path", vigcc.getEmittedBin());
+    corpus_options.addOptionPath("vig_path", vig.getEmittedBin());
+    corpus_options.addOption(
+        []const u8,
+        "corpus_dir",
+        b.pathJoin(&.{ b.root.root_dir.path orelse ".", b.root.sub_path, "tests", "vig" }),
+    );
+    const corpus_options_module = corpus_options.createModule();
+    const corpus_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/corpus_tests.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "corpus_options", .module = corpus_options_module }},
+        }),
+    });
+    const test_step = b.step("test", "Run the VIG C compiler corpus");
+    const run_corpus_tests = b.addRunArtifact(corpus_tests);
+    // The test executable opens `.c` and `.expected` files at run time.  Those
+    // files are not individual build inputs, so run it on every `zig build test`
+    // rather than letting a cached test hide a corpus edit.
+    run_corpus_tests.has_side_effects = true;
+    test_step.dependOn(&run_corpus_tests.step);
 }
 
 fn generateMatcher(
