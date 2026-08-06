@@ -10,6 +10,8 @@
 
 static int parameter_slots;
 static int function_returns_value;
+static Symbol struct_return_pointer;
+static void dumptree(Node);
 
 static void unsupported(Node p) {
 	error("vig: unsupported operator %s\n", opname(p->op));
@@ -29,6 +31,10 @@ static void I(address)(Symbol q, Symbol p, long n) {
 		q->x.name = p->x.name;
 	else
 		q->x.name = stringf("%s%s%D", p->x.name, n > 0 ? "+" : "", n);
+	/* ADDRL nodes use the numeric frame offset rather than x.name.  Preserve
+	 * the displacement here so packed struct fields and array elements do not
+	 * collapse back onto their base local. */
+	q->x.offset = p->x.offset + n;
 }
 
 static void I(defaddress)(Symbol p) {
@@ -91,9 +97,67 @@ static void emit_store(int size) {
 	error("vig: store of %d bytes is not supported\n", size);
 }
 
-static void dumptree(Node p) {
-	int off;
+static void emit_local_address(Symbol p) {
+	int off = p->x.offset;
 
+	if (off%4 == 0)
+		print("local_addr %d\n", parameter_slots + off/4);
+	else {
+		print("local_addr %d\n", parameter_slots);
+		print("push %d\n", off);
+		print("add\n");
+	}
+}
+
+static void emit_local_offset(int off) {
+	if (off%4 == 0)
+		print("local_addr %d\n", parameter_slots + off/4);
+	else {
+		print("local_addr %d\n", parameter_slots);
+		print("push %d\n", off);
+		print("add\n");
+	}
+}
+
+/* ASGNB's children are addresses.  Save them before copying so expressions
+ * with side effects still run exactly once, then copy the aggregate bytewise.
+ * VIG permits unaligned byte accesses and this also handles packed structs. */
+static void emit_block_copy(Node p) {
+	int i, size;
+	Symbol slots;
+	int dst, src;
+
+	assert(p->kids[0] && p->kids[1] && p->syms[0]);
+	slots = p->syms[2];
+	assert(slots);
+	dst = slots->x.offset;
+	src = dst + 4;
+	size = p->syms[0]->u.c.v.i;
+
+	dumptree(p->kids[0]);
+	emit_local_offset(dst);
+	print("store32\n");
+	/* The right child is INDIRB: assignment needs its address, not a block
+	 * value (which has no scalar load instruction). */
+	assert(generic(p->kids[1]->op) == INDIR);
+	dumptree(p->kids[1]->kids[0]);
+	emit_local_offset(src);
+	print("store32\n");
+	for (i = 0; i < size; i++) {
+		emit_local_offset(src);
+		print("load32\n");
+		if (i)
+			print("push %d\nadd\n", i);
+		print("load8_u\n");
+		emit_local_offset(dst);
+		print("load32\n");
+		if (i)
+			print("push %d\nadd\n", i);
+		print("store8\n");
+	}
+}
+
+static void dumptree(Node p) {
 	if (optype(p->op) == F) {
 		reject_float();
 		return;
@@ -124,14 +188,7 @@ static void dumptree(Node p) {
 	case ADDRL:
 		assert(!p->kids[0] && !p->kids[1]);
 		assert(p->syms[0]);
-		off = p->syms[0]->x.offset;
-		if (off%4 == 0)
-			print("local_addr %d\n", parameter_slots + off/4);
-		else {
-			print("local_addr %d\n", parameter_slots);
-			print("push %d\n", off);
-			print("add\n");
-		}
+		emit_local_address(p->syms[0]);
 		return;
 
 	case INDIR:
@@ -141,6 +198,10 @@ static void dumptree(Node p) {
 		return;
 
 	case ASGN:
+		if (optype(p->op) == B) {
+			emit_block_copy(p);
+			return;
+		}
 		/* lcc orders assignment children as address, value. VIG storeX wants
 		 * value, address, so their emission order is intentionally reversed. */
 		assert(p->kids[0] && p->kids[1]);
@@ -164,6 +225,12 @@ static void dumptree(Node p) {
 			dumptree(p->kids[0]);
 			print("call_indirect\n");
 		}
+		/* lcc represents a lowered struct call as CALLV because the result is
+		 * already in the caller-supplied destination.  The VIG ABI still has
+		 * the callee return that destination pointer, so discard it here. */
+		if (optype(p->op) == V && p->syms[0]
+		&& isstruct(freturn(p->syms[0]->type)))
+			print("pop\n");
 		return;
 
 	case RET:
@@ -279,6 +346,7 @@ static void I(function)(Symbol f, Symbol caller[], Symbol callee[], int ncalls) 
 	}
 	parameter_slots = i;
 	function_returns_value = f->type->type != voidtype;
+	struct_return_pointer = isstruct(f->type->type) ? caller[0] : NULL;
 	maxargoffset = maxoffset = argoffset = offset = 0;
 	gencode(caller, callee);
 	print("%s:\n", f->x.name);
@@ -286,13 +354,37 @@ static void I(function)(Symbol f, Symbol caller[], Symbol callee[], int ncalls) 
 	emitcode();
 	/* lcc leaves a label after an explicit return. It can be reached when a C
 	 * function falls off its end, and VIG requires every path to terminate. */
-	if (function_returns_value)
-		print("push 0\nret_val\n");
+	if (function_returns_value) {
+		if (struct_return_pointer) {
+			emit_local_address(struct_return_pointer);
+			print("load32\nret_val\n");
+		} else
+			print("push 0\nret_val\n");
+	}
 	else
 		print("ret\n");
 }
 
+static void prepare_block_copies(Node p) {
+	for (; p; p = p->link) {
+		if (specific(p->op) == ASGN+B && p->syms[2] == NULL) {
+			Symbol dst = temporary(AUTO, voidptype);
+			Symbol src = temporary(AUTO, voidptype);
+			(*IR->local)(dst);
+			(*IR->local)(src);
+			dst->defined = src->defined = 1;
+			/* syms[0] and syms[1] hold ASGNB's size and alignment.  The
+			 * third slot is available for the first of our two adjacent
+			 * pointer spill slots. */
+			p->syms[2] = dst;
+		}
+		prepare_block_copies(p->kids[0]);
+		prepare_block_copies(p->kids[1]);
+	}
+}
+
 static Node I(gen)(Node p) {
+	prepare_block_copies(p);
 	return p;
 }
 
@@ -338,7 +430,7 @@ Interface vigIR = {
 	8, 8, 1, /* double */
 	8, 8, 1, /* long double */
 	4, 4, 0, /* T* */
-	0, 1, 1, /* struct: no padding in the VIG ABI */
+	0, 1, 0, /* struct: no padding in the VIG ABI */
 	1,        /* little_endian */
 	0,        /* mulops_calls */
 	0,        /* wants_callb */

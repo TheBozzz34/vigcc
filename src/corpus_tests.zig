@@ -13,9 +13,12 @@ const cases = [_][]const u8{
     "add_one",
     "control_flow",
     "pointer_array",
+    "struct_copy",
+    "struct_call",
     "struct_layout",
     "switch_chain",
     "unsigned_math",
+    "varargs",
 };
 
 test "each VIG C program produces its recorded output" {

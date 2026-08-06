@@ -18,8 +18,10 @@ Tree (*optree[])(int, Tree, Tree) = {
 #include "token.h"
 };
 Tree call(Tree f, Type fty, Coordinate src) {
-	int n = 0;
+	int n = 0, fixed = 0;
 	Tree args = NULL, r = NULL, e;
+	List varlist = NULL;
+	int vig_varargs = variadic(fty) && IR->structmetric.align == 1;
 	Type *proto, rty = unqual(freturn(fty));
 	Symbol t3 = NULL;
 
@@ -53,6 +55,7 @@ Tree call(Tree f, Type fty, Coordinate src) {
 					&& q->type->size != inttype->size)
 						q = cast(q, promote(q->type));
 					++proto;
+					++fixed;
 				}
 			else
 				{
@@ -78,7 +81,10 @@ Tree call(Tree f, Type fty, Coordinate src) {
 				q->type = inttype;
 			if (hascall(q))
 				r = r ? tree(RIGHT, voidtype, r, q) : q;
-			args = tree(mkop(ARG, q->type), q->type, q, args);
+			if (vig_varargs && n >= fixed)
+				varlist = append(q, varlist);
+			else
+				args = tree(mkop(ARG, q->type), q->type, q, args);
 			n++;
 			if (Aflag >= 2 && n == 32)
 				warning("more than 31 arguments in a call to %s\n",
@@ -88,6 +94,30 @@ Tree call(Tree f, Type fty, Coordinate src) {
 			t = gettok();
 		}
 	expect(')');
+	if (vig_varargs) {
+		Tree *varargs = (Tree *)ltov(&varlist, STMT);
+		int i, count = n - fixed;
+		Tree prep = NULL, values;
+
+		if (count > 0) {
+			Symbol slots = temporary(AUTO, array(inttype, count, inttype->align));
+			for (i = 0; i < count; i++) {
+				Tree address = simplify(ADD+P, ptr(inttype),
+					pointer(idtree(slots)), consttree(4*i, signedptr));
+				Tree store = asgntree(ASGN, rvalue(address), varargs[i]);
+				prep = prep ? tree(RIGHT, voidtype, prep, root(store)) : root(store);
+			}
+			values = pointer(idtree(slots));
+		} else
+			values = cnsttree(voidptype, (void *)0);
+		args = tree(mkop(ARG, inttype), inttype,
+			cnsttree(inttype, (long)count), args);
+		/* ARG's right child is emitted first, so wrap the count before the
+		 * pointer to leave them in ABI order after the fixed arguments. */
+		args = tree(mkop(ARG, values->type), values->type, values, args);
+		if (prep)
+			r = r ? tree(RIGHT, voidtype, r, prep) : prep;
+	}
 	if (proto && *proto && *proto != voidtype)
 		error("insufficient number of arguments to %s\n",
 			funcname(f));

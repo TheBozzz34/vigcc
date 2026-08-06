@@ -82,6 +82,11 @@ pub fn build(b: *std.Build) void {
     tool_options.addOptionPath("cpp_path", cpp.getEmittedBin());
     tool_options.addOptionPath("rcc_path", rcc.getEmittedBin());
     tool_options.addOptionPath("vigasm_path", vigasm.getEmittedBin());
+    tool_options.addOption(
+        []const u8,
+        "vig_include_path",
+        b.pathJoin(&.{ b.root.root_dir.path orelse ".", b.root.sub_path, "include", "vig" }),
+    );
     const tool_options_module = tool_options.createModule();
 
     const vigcc = b.addExecutable(.{

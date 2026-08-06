@@ -608,10 +608,9 @@ static void fields(Type ty) {
 	  	test(';', stop);
 	  } }
 	{ int bits = 0, off = 0, overflow = 0;
-	  /* VIG's ABI deliberately has no structure padding.  `outofline` is
-	   * otherwise unused for struct metrics, so the VIG backend uses it as
-	   * the opt-in marker for this layout rule. */
-	  int packed = IR->structmetric.outofline;
+	  /* VIG's ABI deliberately has no structure padding.  A struct alignment
+	   * of one is the backend's opt-in for that layout rule. */
+	  int packed = IR->structmetric.align == 1;
 	  Field p, *q = &ty->u.sym->u.s.flist;
 	  ty->align = packed ? 1 : IR->structmetric.align;
 	  for (p = *q; p; p = p->link) {
@@ -660,7 +659,7 @@ static void fields(Type ty) {
 	  } }
 }
 static void funcdefn(int sclass, char *id, Type ty, Symbol params[], Coordinate pt) {
-	int i, n;
+	int i, n, vig_varargs;
 	Symbol *callee, *caller, p;
 	Type rty = freturn(ty);
 
@@ -668,8 +667,15 @@ static void funcdefn(int sclass, char *id, Type ty, Symbol params[], Coordinate 
 		error("illegal use of incomplete type `%t'\n", rty);
 	for (n = 0; params[n]; n++)
 		;
-	if (n > 0 && params[n-1]->name == NULL)
+	/* parameters() represents `...' with an unnamed sentinel.  Preserve that
+	 * fact before dropping the sentinel from the C-visible parameter list. */
+	vig_varargs = n > 0 && params[n-1]->name == NULL;
+	if (vig_varargs)
 		params[--n] = NULL;
+	/* The VIG ABI puts a count and pointer after a variadic function's fixed
+	 * parameters.  Use the one-byte struct metric as the backend marker here,
+	 * just as the layout code does above. */
+	vig_varargs = vig_varargs && IR->structmetric.align == 1;
 	if (Aflag >= 2 && n > 31)
 		warning("more than 31 parameters in function `%s'\n", id);
 	if (ty->u.f.oldstyle) {
@@ -731,6 +737,27 @@ static void funcdefn(int sclass, char *id, Type ty, Symbol params[], Coordinate 
 
 		}
 		caller[i] = NULL;
+	}
+	if (vig_varargs) {
+		Symbol count = dclparam(0, string("__vig_va_count"), inttype, &pt);
+		Symbol values = dclparam(0, string("__vig_va_args"), ptr(voidtype), &pt);
+		Symbol *a;
+
+		a = newarray(n + 3, sizeof *a, FUNC);
+		memcpy(a, callee, n*sizeof *a);
+		a[n] = count;
+		a[n + 1] = values;
+		callee = a;
+		a = newarray(n + 3, sizeof *a, FUNC);
+		memcpy(a, caller, n*sizeof *a);
+		NEW(a[n], FUNC);
+		*a[n] = *count;
+		a[n]->sclass = AUTO;
+		NEW(a[n + 1], FUNC);
+		*a[n + 1] = *values;
+		a[n + 1]->sclass = AUTO;
+		caller = a;
+		n += 2;
 	}
 	for (i = 0; (p = callee[i]) != NULL; i++)
 		if (p->type->size == 0) {

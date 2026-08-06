@@ -25,7 +25,7 @@ pub fn main(init: std.process.Init) !void {
     try reserveTemporary(init.io, assembly);
     defer std.Io.Dir.cwd().deleteFile(init.io, assembly) catch {};
 
-    try run(init, &.{ tools.cpp_path, source, preprocessed });
+    try run(init, &.{ tools.cpp_path, "-I", tools.vig_include_path, source, preprocessed });
     try run(init, &.{ tools.rcc_path, "-target=vig", preprocessed, assembly });
     // Keep the stack checker on for every compiled program.  It makes a code
     // generator mistake fail at the instruction that caused it.
