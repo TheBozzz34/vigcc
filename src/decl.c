@@ -608,10 +608,14 @@ static void fields(Type ty) {
 	  	test(';', stop);
 	  } }
 	{ int bits = 0, off = 0, overflow = 0;
+	  /* VIG's ABI deliberately has no structure padding.  `outofline` is
+	   * otherwise unused for struct metrics, so the VIG backend uses it as
+	   * the opt-in marker for this layout rule. */
+	  int packed = IR->structmetric.outofline;
 	  Field p, *q = &ty->u.sym->u.s.flist;
-	  ty->align = IR->structmetric.align;
+	  ty->align = packed ? 1 : IR->structmetric.align;
 	  for (p = *q; p; p = p->link) {
-	  	int a = p->type->align ? p->type->align : 1;
+	  	int a = packed ? 1 : (p->type->align ? p->type->align : 1);
 		if (p->lsb)
 			a = unsignedtype->align;
 		if (ty->op == UNION)
@@ -648,7 +652,8 @@ static void fields(Type ty) {
 	  }
 	  *q = NULL;
 	  chkoverflow(ty->size, ty->align - 1);
-	  ty->size = roundup(ty->size, ty->align);
+	  if (!packed)
+	  	ty->size = roundup(ty->size, ty->align);
 	  if (overflow) {
 	  	error("size of `%t' exceeds %d bytes\n", ty, inttype->u.sym->u.limits.max.i);
 	  	ty->size = inttype->u.sym->u.limits.max.i&(~(ty->align - 1));

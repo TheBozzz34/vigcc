@@ -529,18 +529,7 @@ void emitcode(void) {
 			       	(*IR->stabsym)(cp->u.var);
 			       	swtoseg(CODE);
 			       } break;
-		case Switch:   {	int i;
-			       	defglobal(cp->u.swtch.table, LIT);
-			       	(*IR->defaddress)(equated(cp->u.swtch.labels[0]));
-			       	for (i = 1; i < cp->u.swtch.size; i++) {
-			       		long k = cp->u.swtch.values[i-1];
-			       		while (++k < cp->u.swtch.values[i])
-			       			assert(k < LONG_MAX),
-			       			(*IR->defaddress)(equated(cp->u.swtch.deflab));
-			       		(*IR->defaddress)(equated(cp->u.swtch.labels[i]));
-			       	}
-			       	swtoseg(CODE);
-			       } break;
+		case Switch:   /* A switch is now emitted as comparisons in stmt.c. */ break;
 		default: assert(0);
 		}
 	src = save;

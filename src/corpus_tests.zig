@@ -12,6 +12,9 @@ const options = @import("corpus_options");
 const cases = [_][]const u8{
     "add_one",
     "control_flow",
+    "pointer_array",
+    "struct_layout",
+    "switch_chain",
     "unsigned_math",
 };
 

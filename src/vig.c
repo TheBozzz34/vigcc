@@ -338,7 +338,7 @@ Interface vigIR = {
 	8, 8, 1, /* double */
 	8, 8, 1, /* long double */
 	4, 4, 0, /* T* */
-	0, 4, 0, /* struct */
+	0, 1, 1, /* struct: no padding in the VIG ABI */
 	1,        /* little_endian */
 	0,        /* mulops_calls */
 	0,        /* wants_callb */

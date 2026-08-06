@@ -390,18 +390,16 @@ static void caselabel(Swtch swp, long val, int lab) {
 		warning("more than 257 cases in a switch\n");
 }
 void swgen(Swtch swp) {
-	int *buckets, k, n;
-	long *v = swp->values;
+	int k;
 
-	buckets = newarray(swp->ncases + 1,
-		sizeof *buckets, FUNC);
-	for (n = k = 0; k < swp->ncases; k++, n++) {
-		buckets[n] = k;
-		while (n > 0 && den(n-1, k) >= density)
-			n--;
-	}
-	buckets[n] = swp->ncases;
-	swcode(swp, buckets, 0, n - 1);
+	/* VIG has no indirect jump.  The original lcc generator changes dense
+	 * groups into a table followed by JUMP through a loaded address; retain
+	 * the portable half of the generator instead: one equality test per case
+	 * and a final branch to default. */
+	for (k = 0; k < swp->ncases; k++)
+		cmp(EQ, swp->sym, swp->values[k], swp->labels[k]->u.l.label);
+	walk(NULL, 0, 0);
+	branch(swp->deflab->u.l.label);
 }
 void swcode(Swtch swp, int b[], int lb, int ub) {
 	int hilab, lolab, l, u, k = (lb + ub)/2;
