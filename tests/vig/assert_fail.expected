@@ -1,0 +1,3 @@
+before
+passed
+Assertion failed: count == 3, file assert_fail.c, line 16

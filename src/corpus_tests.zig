@@ -16,11 +16,14 @@ const options = @import("corpus_options");
 
 const cases = [_][]const u8{
     "add_one",
+    "assert_fail",
+    "assert_pass",
     "control_flow",
     "ffi_clock",
     "ffi",
     "heap_limits",
     "intrinsics",
+    "limits_bool",
     "malloc",
     "pointer_array",
     "printf",
