@@ -39,6 +39,10 @@ static const struct {
 	/* Raw byte output, which is what a formatted-output routine written in C
 	 * needs: it writes one byte and adds nothing of its own. */
 	{ "__vig_write",        "write_byte\n"        },
+	/* `halt' stops the VM, so what it leaves on the stack cannot matter and
+	 * the instructions after it are unreachable.  The argument is dropped all
+	 * the same, to keep the stack check honest up to that point. */
+	{ "__vig_halt",         "pop\nhalt\n"         },
 };
 
 /* The instructions that a call to `p` becomes, or null if `p` is an ordinary

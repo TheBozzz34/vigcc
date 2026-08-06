@@ -1,0 +1,12 @@
+a:1
+a:[first]
+ab:[first][second] 1
+calloc:1 0 0 0 0
+filled:0 11 22 33
+realloc:[grow] 1
+realloc:[grown bigger]
+reuse:[first][third]
+1 4 9 16 25 total:55
+edge:[via re] 0
+abs:5 5 0
+atoi:42 -17 8 0

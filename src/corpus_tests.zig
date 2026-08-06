@@ -17,7 +17,9 @@ const options = @import("corpus_options");
 const cases = [_][]const u8{
     "add_one",
     "control_flow",
+    "heap_limits",
     "intrinsics",
+    "malloc",
     "pointer_array",
     "printf",
     "string",

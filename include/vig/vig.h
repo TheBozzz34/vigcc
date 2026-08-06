@@ -22,4 +22,8 @@ void __vig_print_hex(int value);
 void __vig_print_string(const char *text);
 void __vig_write(int byte);
 
+/* Stops the program where it stands.  The value is taken for the sake of the
+ * call and then dropped: VIG keeps no exit status. */
+void __vig_halt(int status);
+
 #endif
