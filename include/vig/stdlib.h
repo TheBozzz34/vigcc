@@ -17,8 +17,13 @@
  * The allocator is the one from K&R: a circular free list, first fit, and
  * coalescing with either neighbour on free.  It is small enough to read, and a
  * block carries only its size and a link.
+ *
+ * A failed allocation sets `errno' to ENOMEM.  C does not ask for that; POSIX
+ * does, and a caller that has just been handed a null pointer has no other way
+ * to learn whether the heap was full or the request was absurd.
  */
 
+#include <errno.h>
 #include <stddef.h>
 #include <string.h>
 #include <vig.h>
@@ -56,8 +61,10 @@ void *malloc(size_t bytes) {
 	 * that rounding it up to whole blocks cannot overflow.  Zero is not
 	 * refused: C leaves that case to the implementation, and handing back a
 	 * pointer that owns no bytes is what the usual C libraries do. */
-	if (bytes > VIG_HEAP_SIZE)
+	if (bytes > VIG_HEAP_SIZE) {
+		errno = ENOMEM;
 		return NULL;
+	}
 	units = (bytes + sizeof(vig_block) - 1) / sizeof(vig_block) + 1;
 
 	if (vig_freep == NULL)
@@ -77,8 +84,12 @@ void *malloc(size_t bytes) {
 			vig_freep = previous;
 			return (void *)(p + 1);
 		}
-		if (p == vig_freep)	/* all the way round, and nothing fits */
+		if (p == vig_freep) {	/* all the way round, and nothing fits */
+			/* C does not require this, but a caller that has just been
+			 * refused memory has no other way to learn why. */
+			errno = ENOMEM;
 			return NULL;
+		}
 	}
 }
 
@@ -115,8 +126,10 @@ void *calloc(size_t count, size_t size) {
 	size_t bytes;
 	void *address;
 
-	if (count != 0 && size > VIG_HEAP_SIZE / count)
-		return NULL;	/* the product would not fit the heap anyway */
+	if (count != 0 && size > VIG_HEAP_SIZE / count) {
+		errno = ENOMEM;	/* the product would not fit the heap anyway */
+		return NULL;
+	}
 	bytes = count * size;
 	address = malloc(bytes);
 	if (address != NULL)

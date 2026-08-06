@@ -19,6 +19,7 @@ const cases = [_][]const u8{
     "assert_fail",
     "assert_pass",
     "control_flow",
+    "ctype_errno",
     "ffi_clock",
     "ffi",
     "heap_limits",

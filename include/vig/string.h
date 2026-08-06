@@ -198,6 +198,29 @@ char *strstr(const char *haystack, const char *needle) {
 	return NULL;
 }
 
+/* The message for an error number.  C puts this in <string.h> rather than in
+ * <errno.h>, and leaves the wording to the implementation.  The returned string
+ * must not be modified, and a later call may overwrite it -- this one returns
+ * literals, so it never does. */
+char *strerror(int number) {
+	switch (number) {
+	case 0:  return "no error";
+	case 2:  return "no such file or directory";
+	case 5:  return "input/output error";
+	case 9:  return "bad file descriptor";
+	case 12: return "not enough memory";
+	case 13: return "permission denied";
+	case 14: return "bad address";
+	case 17: return "file exists";
+	case 22: return "invalid argument";
+	case 28: return "no space left on device";
+	case 33: return "argument out of domain";
+	case 34: return "result out of range";
+	case 84: return "illegal byte sequence";
+	}
+	return "unknown error";
+}
+
 size_t strspn(const char *text, const char *accept) {
 	size_t length = 0;
 
