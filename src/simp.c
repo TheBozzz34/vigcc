@@ -34,10 +34,13 @@ static char rcsid[] = "$Id$";
 #define cfoldcnst(TYPE,VAR,OP) \
 	if (l->op == CNST+TYPE && r->op == CNST+TYPE) \
 		return cnsttree(inttype, (long)(l->u.v.VAR OP r->u.v.VAR))
+/* The address is folded as an integer and turned back into a pointer.  Doing
+ * the arithmetic on the pointer itself is undefined when the base is null, and
+ * a null base is exactly what `offsetof' asks a compiler to fold. */
 #define foldaddp(L,R,RTYPE,VAR) \
 	if (L->op == CNST+P && R->op == CNST+RTYPE) { \
 		Tree e = tree(CNST+P, ty, NULL, NULL);\
-		e->u.v.p = (char *)L->u.v.p + R->u.v.VAR;\
+		e->u.v.p = (void *)((unsigned long)L->u.v.p + (unsigned long)R->u.v.VAR);\
 		return e; }
 #define ufoldcnst(TYPE,EXP) if (l->op == CNST+TYPE) return EXP
 #define sfoldcnst(OP) \
