@@ -276,7 +276,21 @@ static void dumptree(Node p) {
 		}
 		return;
 
-	case CVU: case CVP:
+	case CVU:
+		assert(p->kids[0] && !p->kids[1]);
+		dumptree(p->kids[0]);
+		/* A narrowing conversion has to drop the high bits, exactly as the
+		 * signed CVI above has to extend the sign.  Storing the result would
+		 * truncate it, but a value that is returned or used in an expression
+		 * never passes through a store.  Widening needs nothing: an unsigned
+		 * value already has its high bits clear. */
+		if (opsize(p->op) == 1)
+			print("push 255\nand\n");
+		else if (opsize(p->op) == 2)
+			print("push 65535\nand\n");
+		return;
+
+	case CVP:
 		assert(p->kids[0] && !p->kids[1]);
 		dumptree(p->kids[0]);
 		return;
