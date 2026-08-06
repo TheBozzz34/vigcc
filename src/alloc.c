@@ -8,6 +8,10 @@ union align {
 	long l;
 	char *p;
 	double d;
+	/* The arena hands out objects of every front-end type.  On 64-bit hosts
+	 * long double can require stricter alignment than either pointers or
+	 * double, so it must be represented here as well. */
+	long double ld;
 	int (*f)(void);
 };
 union header {
