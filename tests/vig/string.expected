@@ -1,0 +1,22 @@
+len:0 1 5
+cpy:[hello]
+cat:[hello, world]
+ncat:[hello, world!!]
+ncpy:979899000
+ncpy2:abc
+cmp:0 -1 1 1
+cmpu:1
+ncmp:0 -1 0
+chr:1 1
+chr2:[llo][lo]
+str:[o world] 1 [abc]
+spn:3 0 2
+pbrk:[llo] 1
+set:[zzzzz]
+cpyM:[abzzz]
+mcmp:0 -1 1
+mchr:1 1
+mvR:[0101234789]
+mvL:[2345656789]
+zero:0 0 Q
+Xb aX Xb 

@@ -20,6 +20,7 @@ const cases = [_][]const u8{
     "intrinsics",
     "pointer_array",
     "printf",
+    "string",
     "struct_copy",
     "struct_call",
     "struct_layout",
