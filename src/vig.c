@@ -240,6 +240,32 @@ static int emit_foreign_extern(Symbol p, ForeignImport *entry) {
 	return 1;
 }
 
+/* The frame slot that an address node names, or -1 if it names something else.
+ *
+ * `load_local' and `store_local' reach a slot in one instruction where
+ * `local_addr' and a separate load or store take two, and a slot that is not on
+ * a four-byte boundary takes four.  Recognising the shape here rather than
+ * folding the instructions afterwards keeps the decision where the information
+ * is: a peephole over emitted text would have to know that nothing can jump
+ * between the two instructions, and this cannot ask the question because it
+ * never emits the first one.
+ *
+ * A parameter is always a whole slot.  A local is too, since `I(local)' aligns
+ * them -- but an address *derived* from one is not: `&s.field' of a packed
+ * structure lands part way through a slot, and that has to fall back.
+ */
+static int frame_slot(Node p) {
+	Symbol s;
+
+	if (p == NULL || (s = p->syms[0]) == NULL)
+		return -1;
+	if (specific(p->op) == ADDRF + P)
+		return s->x.offset/4;
+	if (specific(p->op) == ADDRL + P && s->x.offset%4 == 0)
+		return parameter_slots + s->x.offset/4;
+	return -1;
+}
+
 static void emit_local_address(Symbol p) {
 	int off = p->x.offset;
 
@@ -336,6 +362,16 @@ static void dumptree(Node p) {
 
 	case INDIR:
 		assert(p->kids[0] && !p->kids[1]);
+		/* Reading a whole slot of the frame is one instruction.  A narrower
+		 * read is not: `load_local' is 32 bits and says nothing about a sign. */
+		if (opsize(p->op) == 4) {
+			int slot = frame_slot(p->kids[0]);
+
+			if (slot >= 0) {
+				print("load_local %d\n", slot);
+				return;
+			}
+		}
 		dumptree(p->kids[0]);
 		emit_load(opsize(p->op), optype(p->op) == U);
 		return;
@@ -349,6 +385,16 @@ static void dumptree(Node p) {
 		 * value, address, so their emission order is intentionally reversed. */
 		assert(p->kids[0] && p->kids[1]);
 		dumptree(p->kids[1]);
+		/* `store_local' takes the value alone, so the address is never
+		 * computed.  The value has to be on the stack first either way. */
+		if (opsize(p->op) == 4) {
+			int slot = frame_slot(p->kids[0]);
+
+			if (slot >= 0) {
+				print("store_local %d\n", slot);
+				return;
+			}
+		}
 		dumptree(p->kids[0]);
 		emit_store(opsize(p->op));
 		return;
@@ -600,7 +646,21 @@ static void I(import)(Symbol p) {
 }
 
 static void I(local)(Symbol p) {
-	/* VIG permits unaligned accesses and its ABI specifies no struct padding. */
+	/* Each local starts on a slot boundary.
+	 *
+	 * VIG permits an unaligned access, so this is not about what the machine
+	 * requires -- it is about what `load_local' and `store_local' can reach.
+	 * Those index four-byte slots, so a local at a byte offset that is not a
+	 * multiple of four can only be read through `local_addr', a `push' and an
+	 * `add'.  One `char' local would otherwise push every local after it off a
+	 * slot boundary and make all of them cost three instructions instead of one.
+	 *
+	 * The padding this adds is frame space, and a frame has a megabyte to grow
+	 * down into.  It is not an ABI change either: the packed layout that ABI.md
+	 * promises is about the fields of a structure, which fixes `sizeof' and
+	 * `offsetof'.  Where a function puts its own locals is its own business.
+	 */
+	offset = roundup(offset, 4);
 	p->x.name = stringf("%d", offset);
 	p->x.offset = offset;
 	offset += p->type->size;
