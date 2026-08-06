@@ -413,11 +413,15 @@ static void dumptree(Node p) {
 
 	case JUMP:
 		assert(p->kids[0] && !p->kids[1]);
-		if (specific(p->kids[0]->op) != ADDRG+P) {
-			unsupported(p);
+		/* A jump to a label the instruction can name is a direct one.  Anything
+		 * else is a computed target -- a switch reaching its arm through a jump
+		 * table -- so the address is worked out and jumped to. */
+		if (specific(p->kids[0]->op) == ADDRG+P) {
+			print("jmp %s\n", p->kids[0]->syms[0]->x.name);
 			return;
 		}
-		print("jmp %s\n", p->kids[0]->syms[0]->x.name);
+		dumptree(p->kids[0]);
+		print("jmp_indirect\n");
 		return;
 
 	case NEG:

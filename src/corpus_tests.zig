@@ -34,6 +34,7 @@ const cases = [_][]const u8{
     "struct_call",
     "struct_layout",
     "switch_chain",
+    "switch_table",
     "time",
     "unsigned_math",
     "varargs",

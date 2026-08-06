@@ -529,7 +529,24 @@ void emitcode(void) {
 			       	(*IR->stabsym)(cp->u.var);
 			       	swtoseg(CODE);
 			       } break;
-		case Switch:   /* A switch is now emitted as comparisons in stmt.c. */ break;
+		case Switch: {
+			/* The dispatch itself was emitted as an indirect jump through
+			 * this table; here the table is written out.  It holds one entry
+			 * for every value between the lowest and the highest of the run,
+			 * so a gap in the middle points at the default label and the
+			 * index needs no adjustment beyond subtracting the lowest. */
+			int i;
+			defglobal(cp->u.swtch.table, LIT);
+			(*IR->defaddress)(equated(cp->u.swtch.labels[0]));
+			for (i = 1; i < cp->u.swtch.size; i++) {
+				long k = cp->u.swtch.values[i-1];
+				while (++k < cp->u.swtch.values[i])
+					(*IR->defaddress)(equated(cp->u.swtch.deflab));
+				(*IR->defaddress)(equated(cp->u.swtch.labels[i]));
+			}
+			swtoseg(CODE);
+			break;
+			}
 		default: assert(0);
 		}
 	src = save;

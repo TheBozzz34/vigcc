@@ -392,14 +392,21 @@ static void caselabel(Swtch swp, long val, int lab) {
 void swgen(Swtch swp) {
 	int k;
 
-	/* VIG has no indirect jump.  The original lcc generator changes dense
-	 * groups into a table followed by JUMP through a loaded address; retain
-	 * the portable half of the generator instead: one equality test per case
-	 * and a final branch to default. */
-	for (k = 0; k < swp->ncases; k++)
-		cmp(EQ, swp->sym, swp->values[k], swp->labels[k]->u.l.label);
-	walk(NULL, 0, 0);
-	branch(swp->deflab->u.l.label);
+	/* Group the cases into runs dense enough to be worth a table, and leave
+	 * the rest to `swcode', which tests a small run one value at a time and
+	 * builds a table for a large one.  VIG has `jmp_indirect' now, so the
+	 * table half of the generator is reachable again. */
+	int *buckets, n;
+	long *v = swp->values;
+
+	buckets = newarray(swp->ncases + 1, sizeof *buckets, FUNC);
+	for (n = k = 0; k < swp->ncases; k++, n++) {
+		buckets[n] = k;
+		while (n > 0 && den(n-1, k) >= density)
+			n--;
+	}
+	buckets[n] = swp->ncases;
+	swcode(swp, buckets, 0, n - 1);
 }
 void swcode(Swtch swp, int b[], int lb, int ub) {
 	int hilab, lolab, l, u, k = (lb + ub)/2;
