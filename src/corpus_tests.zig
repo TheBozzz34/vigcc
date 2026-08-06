@@ -22,6 +22,7 @@ const cases = [_][]const u8{
     "malloc",
     "pointer_array",
     "printf",
+    "qsort",
     "string",
     "struct_copy",
     "struct_call",

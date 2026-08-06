@@ -159,6 +159,75 @@ void abort(void) {
 	__vig_halt(1);
 }
 
+static void vig_swap(char *left, char *right, size_t size) {
+	size_t i;
+	char held;
+
+	for (i = 0; i < size; i++) {
+		held = left[i];
+		left[i] = right[i];
+		right[i] = held;
+	}
+}
+
+/* A shell sort, with Knuth's gaps.
+ *
+ * The name says quicksort but the standard asks only for a sort, and this one
+ * suits the machine better: it needs no recursion at all.  A quicksort recurses
+ * to a depth that the input decides, and VIG has a fixed call stack -- 256
+ * frames by default -- with frame storage that grows down towards the program
+ * image.  A sort that cannot run either of them out is worth an insertion pass.
+ *
+ * `compare' is reached only through the pointer the caller gave, so every call
+ * to it is a `call_indirect' and the function is verified the first time one
+ * arrives there.
+ */
+void qsort(void *base, size_t count, size_t size,
+	int (*compare)(const void *, const void *)) {
+	char *items = (char *)base;
+	size_t gap, i, j;
+
+	if (count < 2 || size == 0)
+		return;
+
+	gap = 1;
+	while (gap < count / 3)
+		gap = gap * 3 + 1;
+
+	for (;;) {
+		for (i = gap; i < count; i++)
+			/* `j' is unsigned, so the test stops the loop before it could
+			 * subtract past zero. */
+			for (j = i; j >= gap
+			&& compare(items + (j - gap)*size, items + j*size) > 0; j -= gap)
+				vig_swap(items + (j - gap)*size, items + j*size, size);
+		if (gap == 1)
+			return;
+		gap = gap / 3;
+	}
+}
+
+void *bsearch(const void *key, const void *base, size_t count, size_t size,
+	int (*compare)(const void *, const void *)) {
+	const char *items = (const char *)base;
+	size_t low = 0, high = count, middle;
+	int order;
+
+	while (low < high) {
+		/* Written as a difference so the midpoint cannot overflow, which it
+		 * could for a count near the top of a 32-bit size. */
+		middle = low + (high - low)/2;
+		order = compare(key, items + middle*size);
+		if (order == 0)
+			return (void *)(items + middle*size);
+		if (order < 0)
+			high = middle;
+		else
+			low = middle + 1;
+	}
+	return NULL;
+}
+
 int abs(int value) {
 	return value < 0 ? -value : value;
 }
