@@ -45,7 +45,7 @@ pub fn build(b: *std.Build) void {
             "event.c", "expr.c", "gen.c", "init.c", "inits.c", "input.c",
             "lex.c", "list.c", "main.c", "null.c", "output.c", "prof.c",
             "profio.c", "simp.c", "stab.c", "stmt.c", "string.c", "sym.c",
-            "symbolic.c", "bytecode.c", "trace.c", "tree.c", "types.c",
+            "symbolic.c", "bytecode.c", "trace.c", "tree.c", "types.c", "vig.c",
         },
         .flags = c_flags,
     });
