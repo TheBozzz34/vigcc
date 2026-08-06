@@ -17,6 +17,7 @@ const options = @import("corpus_options");
 const cases = [_][]const u8{
     "add_one",
     "control_flow",
+    "ffi_clock",
     "ffi",
     "heap_limits",
     "intrinsics",
@@ -29,6 +30,7 @@ const cases = [_][]const u8{
     "struct_call",
     "struct_layout",
     "switch_chain",
+    "time",
     "unsigned_math",
     "varargs",
 };

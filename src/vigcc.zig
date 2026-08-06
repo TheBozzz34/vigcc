@@ -25,7 +25,18 @@ pub fn main(init: std.process.Init) !void {
     try reserveTemporary(init.io, assembly);
     defer std.Io.Dir.cwd().deleteFile(init.io, assembly) catch {};
 
-    try run(init, &.{ tools.cpp_path, "-I", tools.vig_include_path, source, preprocessed });
+    // A foreign import names a library of the system that will run the program,
+    // and nothing in the bytecode makes that name portable.  A header that wants
+    // one therefore has to pick, so the host this compiler was built for is
+    // given to it as a default.  A program may define VIG_HOST itself to compile
+    // for a different one.
+    const host = switch (@import("builtin").os.tag) {
+        .windows => "-DVIG_HOST_WINDOWS=1",
+        .macos => "-DVIG_HOST_MACOS=1",
+        else => "-DVIG_HOST_POSIX=1",
+    };
+
+    try run(init, &.{ tools.cpp_path, host, "-I", tools.vig_include_path, source, preprocessed });
     try run(init, &.{ tools.rcc_path, "-target=vig", preprocessed, assembly });
     // Keep the stack checker on for every compiled program.  It makes a code
     // generator mistake fail at the instruction that caused it.
