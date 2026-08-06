@@ -255,6 +255,23 @@ Node listnodes(Tree tp, int tlab, int flab) {
 		      if (tlab)
 		      	assert(flab == 0),
 		      	list(newnode(generic(tp->op) + opkind(l->op), l, r, findlabel(tlab)));
+		      else if (flab && optype(tp->op) == F) {
+		      	/* A floating-point comparison cannot be negated by flipping
+		      	 * its operator.  `!(a < b)' is `a >= b' only when both are
+		      	 * numbers: if either is a NaN then `a < b' and `a >= b' are
+		      	 * both false, and flipping one into the other turns the answer
+		      	 * upside down.  IEEE-754 has separate unordered predicates for
+		      	 * this; VIG does not, so the comparison is kept as it stands
+		      	 * and the *branch* is inverted instead -- jump over the jump. */
+		      	int over = genlabel(1);
+		      	Symbol overlab = findlabel(over);
+
+		      	list(newnode(generic(tp->op) + opkind(l->op), l, r, overlab));
+		      	list(newnode(JUMP+V,
+		      		newnode(ADDRG+P, NULL, NULL, findlabel(flab)), NULL, NULL));
+		      	list(newnode(LABEL+V, NULL, NULL, overlab));
+		      	overlab->ref++;
+		      }
 		      else if (flab) {
 		      	switch (generic(tp->op)) {
 		      	case EQ: op = NE; break;

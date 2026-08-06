@@ -226,7 +226,17 @@ Tree cnsttree(Type ty, ...) {
 	switch (ty->op) {
 	case INT:     p->u.v.i = va_arg(ap, long); break;
 	case UNSIGNED:p->u.v.u = va_arg(ap, unsigned long)&ones(8*ty->size); break;
-	case FLOAT:   p->u.v.d = va_arg(ap, long double); break;
+	case FLOAT:   p->u.v.d = va_arg(ap, long double);
+	              /* Narrow to the target's precision, exactly as the UNSIGNED
+	               * case above narrows to the target's width.  The folder works
+	               * in the compiler's own `long double', and every floating
+	               * point type here is binary32: without this, a folded constant
+	               * keeps digits the machine cannot hold, and `16777216.0f +
+	               * 1.0f == 16777216.0f' comes out false at compile time and
+	               * true at run time. */
+	              if (ty->size == 4)
+	              	p->u.v.d = (float)p->u.v.d;
+	              break;
 	case POINTER: p->u.v.p = va_arg(ap, void *); break;
 	default: assert(0);
 	}

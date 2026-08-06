@@ -1,0 +1,14 @@
+arith:650 -150 1000 160
+calls:1050 900
+exact:1 1
+tenth:1
+precision:1 1
+compare:1 0 1 1 1 1
+zeros:1 1
+inf:1 1 1
+nan:0 0 0 1
+over:1 1
+trunc:2 -2 0 0
+widen:350 -350
+unsigned:4000000
+array:1500 450

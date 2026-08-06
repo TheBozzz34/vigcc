@@ -95,8 +95,15 @@ static char *intrinsic(Symbol p) {
 	return NULL;
 }
 
-static void reject_float(void) {
-	error("vig: floating-point operations are not supported\n");
+/* The bits of `value' as a binary32.  Every floating-point value in this C
+ * subset is one, and a program names one by those bits: the assembler has no
+ * float literal and does not need one. */
+static unsigned float_bits(long double value) {
+	float narrowed = (float)value;
+	unsigned bits;
+
+	memcpy(&bits, &narrowed, sizeof bits);
+	return bits;
 }
 
 static void I(segment)(int n) {
@@ -121,7 +128,10 @@ static void I(defaddress)(Symbol p) {
 
 static void I(defconst)(int suffix, int size, Value v) {
 	if (suffix == F) {
-		reject_float();
+		if (size != 4)
+			error("vig: a %d-byte floating-point value is not supported\n", size);
+		else
+			print("i32 %d\n", (int)float_bits(v.d));
 		return;
 	}
 	if (size == 1)
@@ -147,6 +157,10 @@ static void I(defsymbol)(Symbol p) {
 		case I: p->x.name = stringf("%D", p->u.c.v.i); break;
 		case U: p->x.name = stringf("%U", p->u.c.v.u); break;
 		case P: p->x.name = stringf("%U", p->u.c.v.p); break;
+		/* A float is named by the bits of its binary32 form, which is what
+		 * `push' takes.  Printing them as a signed decimal is exact: the
+		 * assembler reads that back into the same four bytes. */
+		case F: p->x.name = stringf("%d", (int)float_bits(p->u.c.v.d)); break;
 		default: assert(0);
 		}
 	else if (p->scope >= LOCAL && p->sclass == STATIC)
@@ -327,11 +341,6 @@ static void emit_block_copy(Node p) {
 }
 
 static void dumptree(Node p) {
-	if (optype(p->op) == F) {
-		reject_float();
-		return;
-	}
-
 	switch (generic(p->op)) {
 	case CNST:
 		assert(!p->kids[0] && !p->kids[1]);
@@ -472,14 +481,39 @@ static void dumptree(Node p) {
 
 	case NEG:
 		assert(p->kids[0] && !p->kids[1]);
+		if (optype(p->op) == F) {
+			/* `fneg' flips the sign bit, which is not what `0.0 - x' does: it
+			 * negates a zero and leaves a NaN a NaN. */
+			dumptree(p->kids[0]);
+			print("fneg\n");
+			return;
+		}
 		print("push 0\n");
 		dumptree(p->kids[0]);
 		print("sub\n");
 		return;
 
+	case CVF:
+		/* From a float.  There is only one floating-point size here, so a
+		 * float-to-float conversion has nothing to do. */
+		assert(p->kids[0] && !p->kids[1]);
+		dumptree(p->kids[0]);
+		if (optype(p->op) == I)
+			print("f2i\n");
+		else if (optype(p->op) == U)
+			print("f2u\n");
+		else if (optype(p->op) != F)
+			unsupported(p);
+		return;
+
 	case CVI:
 		assert(p->kids[0] && !p->kids[1]);
 		dumptree(p->kids[0]);
+		/* To a float, from a signed integer. */
+		if (optype(p->op) == F) {
+			print("i2f\n");
+			return;
+		}
 		if (opsize(p->op) == 1) {
 			print("push 24\nshl\npush 24\nshr_s\n");
 		} else if (opsize(p->op) == 2) {
@@ -490,6 +524,12 @@ static void dumptree(Node p) {
 	case CVU:
 		assert(p->kids[0] && !p->kids[1]);
 		dumptree(p->kids[0]);
+		/* To a float, from an unsigned integer, which is a different
+		 * instruction: the same bits name a different number. */
+		if (optype(p->op) == F) {
+			print("u2f\n");
+			return;
+		}
 		/* A narrowing conversion has to drop the high bits, exactly as the
 		 * signed CVI above has to extend the sign.  Storing the result would
 		 * truncate it, but a value that is returned or used in an expression
@@ -511,6 +551,20 @@ static void dumptree(Node p) {
 		assert(p->kids[0] && p->kids[1]);
 		dumptree(p->kids[0]);
 		dumptree(p->kids[1]);
+		if (optype(p->op) == F) {
+			/* None of these traps.  IEEE-754 answers every one, so a division
+			 * by zero gives an infinity where `div' would fault. */
+			switch (generic(p->op)) {
+			case ADD: print("fadd\n"); return;
+			case SUB: print("fsub\n"); return;
+			case MUL: print("fmul\n"); return;
+			case DIV: print("fdiv\n"); return;
+			}
+			/* A remainder, a shift and the bitwise operations have no
+			 * floating-point form, and C does not ask for one. */
+			unsupported(p);
+			return;
+		}
 		switch (generic(p->op)) {
 		case ADD:  print(optype(p->op) == U ? "add_wrap\n" : "add\n"); return;
 		case SUB:  print(optype(p->op) == U ? "sub_wrap\n" : "sub\n"); return;
@@ -536,6 +590,20 @@ static void dumptree(Node p) {
 		assert(p->syms[0] && p->syms[0]->x.name);
 		dumptree(p->kids[0]);
 		dumptree(p->kids[1]);
+		if (optype(p->op) == F) {
+			/* Each leaves the integer 1 or 0, so the branch below reads it
+			 * without knowing which kind of comparison produced it. */
+			switch (generic(p->op)) {
+			case EQ: print("feq\n"); break;
+			case NE: print("fne\n"); break;
+			case GE: print("fge\n"); break;
+			case GT: print("fgt\n"); break;
+			case LE: print("fle\n"); break;
+			case LT: print("flt\n"); break;
+			}
+			print("jmp_not_zero %s\n", p->syms[0]->x.name);
+			return;
+		}
 		switch (generic(p->op)) {
 		case EQ: print("eq\n"); break;
 		case NE: print("ne\n"); break;
@@ -626,8 +694,6 @@ static Node I(gen)(Node p) {
 }
 
 static void I(global)(Symbol p) {
-	if (isfloat(p->type))
-		reject_float();
 	print("%s:\n", p->x.name);
 }
 
@@ -687,9 +753,14 @@ Interface vigIR = {
 	4, 4, 0, /* int */
 	4, 4, 0, /* long */
 	4, 4, 0, /* long long: the 32-bit VIG representation */
-	4, 4, 1, /* float: parsed for a useful backend rejection */
-	8, 8, 1, /* double */
-	8, 8, 1, /* long double */
+	4, 4, 0, /* float */
+	/* There is no 64-bit float.  A slot is four bytes, `ret_val' returns one
+	 * slot, and the ABI passes every variadic argument as one; a double would
+	 * change all three.  So `double' and `long double' are binary32 too, which
+	 * is the one place this compiler quietly gives less precision than C asks
+	 * for.  See ABI.md. */
+	4, 4, 0, /* double */
+	4, 4, 0, /* long double */
 	4, 4, 0, /* T* */
 	0, 1, 0, /* struct: no padding in the VIG ABI */
 	1,        /* little_endian */

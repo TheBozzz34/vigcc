@@ -21,6 +21,7 @@ const cases = [_][]const u8{
     "control_flow",
     "ctype_errno",
     "ffi_clock",
+    "floating",
     "ffi",
     "heap_limits",
     "intrinsics",
