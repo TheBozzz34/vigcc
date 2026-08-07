@@ -86,6 +86,7 @@ pub fn build(b: *std.Build) void {
 
     const make_crt0 = b.addRunArtifact(vigasm);
     make_crt0.addArg("-c");
+    make_crt0.addArg("--vig64");
     make_crt0.addFileArg(b.path("runtime/crt0.vigas"));
     make_crt0.addArg("-o");
     const crt0 = make_crt0.addOutputFileArg("crt0.vigo");
@@ -217,6 +218,7 @@ fn compileRuntimeObject(
     const assemble = b.addRunArtifact(vigasm);
     assemble.step.dependOn(&compile.step);
     assemble.addArg("-c");
+    assemble.addArg("--vig64");
     assemble.addFileArg(assembly);
     assemble.addArg("-o");
     return assemble.addOutputFileArg(b.fmt("{s}.vigo", .{name}));

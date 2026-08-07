@@ -3,13 +3,13 @@
 
 /* The types that the rest of the headers share.
  *
- * VIG is a 32-bit machine and its C subset has no type wider than four bytes,
- * so a size and a pointer difference are an unsigned int and an int.  See
- * ABI.md.
+ * VIG64 is LP64: a pointer and a `long' are eight bytes and an `int' is four.
+ * Therefore a size is an `unsigned long' and a pointer difference is a `long',
+ * and neither one is an `int'.  See VIG64.md.
  */
 
-typedef unsigned int size_t;
-typedef int ptrdiff_t;
+typedef unsigned long size_t;
+typedef long ptrdiff_t;
 
 #ifndef NULL
 #define NULL ((void *)0)

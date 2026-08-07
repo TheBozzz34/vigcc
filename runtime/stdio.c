@@ -81,23 +81,30 @@ static int vig_digits(unsigned value, unsigned base, int upper, char *out) {
 
 /* Floating point, for the conversions below.
  *
- * A binary32 carries about 7.2 decimal digits, so nine is already more than the
- * value knows.  That matters for a large number: a C library prints the exact
- * binary expansion of what it holds, which for 1e30f runs to 31 nonzero-looking
- * digits, while this prints the nine that mean anything and zeros after them.
- * Within the range where the whole part fits an unsigned int -- which is every
- * value a program is likely to print -- the two agree.
+ * These work in `double', which is binary64 under VIG64.  That is not a matter
+ * of precision but of what arrives: C promotes a variadic `float' to `double',
+ * so `printf("%f", x)' hands over eight bytes whatever the argument was
+ * written as.  Reading four would read half of one.
+ *
+ * Nine digits is what gets printed.  A binary32 carries about 7.2 decimal
+ * digits and a binary64 about 15.9, so nine is more than a `float' knows and
+ * less than a `double' does.  That matters for a large number: a C library
+ * prints the exact binary expansion of what it holds, which for 1e30 runs to
+ * 31 nonzero-looking digits, while this prints the nine that a `float' means
+ * and zeros after them.  Within the range where the whole part fits an
+ * unsigned int -- which is every value a program is likely to print -- the two
+ * agree.
  */
 
 #define VIG_FLOAT_DIGITS 9
 #define VIG_MAX_PRECISION 9	/* ten to the ninth still fits an unsigned int */
 
-static int vig_isnan(float value) {
+static int vig_isnan(double value) {
 	return !(value == value);
 }
 
-static int vig_isinf(float value) {
-	return value != 0.0f && value / 2.0f == value && !vig_isnan(value);
+static int vig_isinf(double value) {
+	return value != 0.0 && value / 2.0 == value && !vig_isnan(value);
 }
 
 /* The digits of a positive finite value, most significant first, and the
@@ -105,42 +112,47 @@ static int vig_isinf(float value) {
  *
  * Scaling by a table of powers rather than one factor of ten at a time keeps
  * the error down: reaching 1e30 by thirty divisions rounds thirty times. */
-static int vig_significand(float value, int count, char *digits) {
-	static const float up[6] = { 1e1f, 1e2f, 1e4f, 1e8f, 1e16f, 1e32f };
-	static const int step[6] = { 1, 2, 4, 8, 16, 32 };
+static int vig_significand(double value, int count, char *digits) {
+	/* The table reaches 1e256 rather than 1e32 because a binary64 runs to
+	 * about 1.8e308.  Stopping at 1e32 would leave the loop below dividing by
+	 * ten hundreds of times, and each division rounds. */
+	static const double up[9] = {
+		1e1, 1e2, 1e4, 1e8, 1e16, 1e32, 1e64, 1e128, 1e256
+	};
+	static const int step[9] = { 1, 2, 4, 8, 16, 32, 64, 128, 256 };
 	char whole_digits[12];
 	unsigned whole;
-	float fraction;
+	double fraction;
 	int exponent = 0;
 	int i = 0;
 	int wcount;
 
-	if (value == 0.0f) {
+	if (value == 0.0) {
 		for (i = 0; i < count; i++)
 			digits[i] = '0';
 		return 0;
 	}
 
-	if (value < 4294967296.0f) {
+	if (value < 4294967296.0) {
 		/* The whole part is an exact integer, and so are its digits.  That
 		 * matters for a tie: 1234.5 has to come out as 12345 and then zeros,
 		 * and arriving at it by dividing by a thousand leaves a remainder that
 		 * makes an exact half look like a little more than one. */
 		whole = (unsigned)value;
-		fraction = value - (float)whole;
+		fraction = value - (double)whole;
 		if (whole > 0u) {
 			wcount = vig_digits(whole, 10u, 0, whole_digits);
 			exponent = wcount;
 			for (i = 0; i < wcount && i < count; i++)
 				digits[i] = whole_digits[wcount - 1 - i];
 		} else {
-			while (fraction < 0.1f) {
-				fraction = fraction * 10.0f;
+			while (fraction < 0.1) {
+				fraction = fraction * 10.0;
 				exponent--;
 			}
 		}
 		while (i < count) {
-			float scaled = fraction * 10.0f;
+			double scaled = fraction * 10.0;
 			int digit = (int)scaled;
 
 			if (digit > 9)
@@ -148,7 +160,7 @@ static int vig_significand(float value, int count, char *digits) {
 			if (digit < 0)
 				digit = 0;
 			digits[i] = (char)('0' + digit);
-			fraction = scaled - (float)digit;
+			fraction = scaled - (double)digit;
 			i++;
 		}
 		return exponent;
@@ -157,22 +169,22 @@ static int vig_significand(float value, int count, char *digits) {
 	/* Beyond that the whole part does not fit an unsigned int, so the value is
 	 * scaled down by a table of powers -- which rounds far fewer times than one
 	 * factor of ten at a time would.  A value this large has no exact decimal
-	 * form in binary32 anyway. */
-	for (i = 5; i >= 0; i--)
+	 * form in nine digits anyway. */
+	for (i = 8; i >= 0; i--)
 		while (value >= up[i]) {
 			value = value / up[i];
 			exponent += step[i];
 		}
-	while (value >= 1.0f) {
-		value = value / 10.0f;
+	while (value >= 1.0) {
+		value = value / 10.0;
 		exponent++;
 	}
-	while (value < 0.1f) {
-		value = value * 10.0f;
+	while (value < 0.1) {
+		value = value * 10.0;
 		exponent--;
 	}
 	for (i = 0; i < count; i++) {
-		float scaled = value * 10.0f;
+		double scaled = value * 10.0;
 		int digit = (int)scaled;
 
 		if (digit > 9)
@@ -180,7 +192,7 @@ static int vig_significand(float value, int count, char *digits) {
 		if (digit < 0)
 			digit = 0;
 		digits[i] = (char)('0' + digit);
-		value = scaled - (float)digit;
+		value = scaled - (double)digit;
 	}
 	return exponent;
 }
@@ -222,12 +234,12 @@ static int vig_round_digits(char *digits, int count, int keep, int *exponent) {
 }
 
 /* `value' in the style of %f.  It is finite and not negative. */
-static int vig_fixed(float value, int precision, char *out) {
+static int vig_fixed(double value, int precision, char *out) {
 	char digits[VIG_FLOAT_DIGITS + 2];
 	unsigned whole, fraction, power;
 	int length = 0, exponent, i, point;
 
-	if (value < 4294967296.0f) {
+	if (value < 4294967296.0) {
 		/* The whole part fits an unsigned int, so it is exact and the
 		 * fraction is scaled by ten to the precision and rounded once. */
 		whole = (unsigned)value;
@@ -237,16 +249,16 @@ static int vig_fixed(float value, int precision, char *out) {
 		{
 			/* The same rule, on a scaled fraction rather than on digits: round
 			 * to nearest, and on an exact half to the even value. */
-			float scaled = (value - (float)whole) * (float)power;
-			float rest;
+			double scaled = (value - (double)whole) * (double)power;
+			double rest;
 
 			fraction = (unsigned)scaled;
-			rest = scaled - (float)fraction;
+			rest = scaled - (double)fraction;
 			/* The digit that decides is the last one kept: the fraction when
 			 * there is one, and otherwise the whole part, whose final digit is
 			 * what a precision of zero rounds. */
-			if (rest > 0.5f
-			|| (rest == 0.5f && ((precision > 0 ? fraction : whole) & 1u) != 0u))
+			if (rest > 0.5
+			|| (rest == 0.5 && ((precision > 0 ? fraction : whole) & 1u) != 0u))
 				fraction = fraction + 1u;
 		}
 		if (fraction >= power) {
@@ -292,7 +304,7 @@ static int vig_fixed(float value, int precision, char *out) {
 }
 
 /* `value' in the style of %e. */
-static int vig_scientific(float value, int precision, int upper, char *out) {
+static int vig_scientific(double value, int precision, int upper, char *out) {
 	char digits[VIG_FLOAT_DIGITS + 2];
 	int length = 0, exponent, i, power, keep;
 
@@ -316,7 +328,7 @@ static int vig_scientific(float value, int precision, int upper, char *out) {
 	length++;
 
 	/* The exponent of 0.D1... is one more than the exponent of D1.D2... */
-	power = value == 0.0f ? 0 : exponent - 1;
+	power = value == 0.0 ? 0 : exponent - 1;
 	out[length] = power < 0 ? '-' : '+';
 	length++;
 	if (power < 0)
@@ -331,7 +343,7 @@ static int vig_scientific(float value, int precision, int upper, char *out) {
 
 /* `value' in the style of %g: whichever of the two above is shorter, with the
  * trailing zeros of the fraction removed. */
-static int vig_general(float value, int precision, int upper, char *out) {
+static int vig_general(double value, int precision, int upper, char *out) {
 	char digits[VIG_FLOAT_DIGITS + 2];
 	int exponent, length, i, keep;
 
@@ -344,7 +356,7 @@ static int vig_general(float value, int precision, int upper, char *out) {
 	vig_round_digits(digits, VIG_FLOAT_DIGITS, keep, &exponent);
 
 	/* C chooses the scientific form when the exponent is small or large. */
-	if (value != 0.0f && (exponent - 1 < -4 || exponent - 1 >= precision))
+	if (value != 0.0 && (exponent - 1 < -4 || exponent - 1 >= precision))
 		length = vig_scientific(value, precision - 1, upper, out);
 	else
 		length = vig_fixed(value, precision - exponent < 0 ? 0 : precision - exponent, out);
@@ -379,12 +391,12 @@ static int vig_general(float value, int precision, int upper, char *out) {
 
 /* The text of a floating-point conversion, and its length.  A NaN and an
  * infinity have no digits, so they are named. */
-static int vig_float_text(float value, int conversion, int precision,
+static int vig_float_text(double value, int conversion, int precision,
 	int *negative, char *out) {
 	int upper = conversion == 'E' || conversion == 'G' || conversion == 'F';
 
 	*negative = 0;
-	if (value < 0.0f || (value == 0.0f && 1.0f / value < 0.0f)) {
+	if (value < 0.0 || (value == 0.0 && 1.0 / value < 0.0)) {
 		*negative = 1;
 		value = -value;
 	}
@@ -497,10 +509,10 @@ static int vig_format(vig_sink *sink, const char *format, va_list arguments) {
 			} else if (conversion == 'f' || conversion == 'F'
 			|| conversion == 'e' || conversion == 'E'
 			|| conversion == 'g' || conversion == 'G') {
-				/* Every floating-point type here is binary32, so a variadic
-				 * argument carries one and the default promotion that would
-				 * widen it to a double has nothing to do.  See ABI.md. */
-				float number = va_arg(arguments, float);
+				/* C promotes a variadic `float' to `double', so the slot
+				 * holds a binary64 whatever the caller wrote.  Reading a
+				 * `float' out of it would read half of one.  See VIG64.md. */
+				double number = va_arg(arguments, double);
 
 				length = vig_float_text(number, conversion, precision,
 					&negative, digits);

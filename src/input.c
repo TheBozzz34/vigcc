@@ -120,7 +120,7 @@ static void pragma(void) {
 		}
 	}
 	else if (t == ID && strcmp(token, "vig") == 0) {
-		char *name, *library, *symbol;
+		char *name, *library, *symbol, *signature = NULL;
 
 		if ((t = gettok()) != ID || strcmp(token, "import") != 0) {
 			error("expected `import' after `#pragma vig'\n");
@@ -148,10 +148,22 @@ static void pragma(void) {
 		symbol = pragma_string();
 		if (symbol == NULL)
 			return;
+		while (*cp == ' ' || *cp == '\t')
+			cp++;
+		/* An optional fourth string is the VIG64 signature. Its first word is
+		 * the result type and the remaining words are argument types. It lets a
+		 * C declaration distinguish a guest buffer pointer from an opaque host
+		 * handle, which the C type system cannot express by itself. */
+		if (*cp == ',') {
+			cp++;
+			signature = pragma_string();
+			if (signature == NULL)
+				return;
+		}
 		if (IR->foreign_import == NULL)
 			error("`#pragma vig import' is only supported by the VIG target\n");
 		else
-			(*IR->foreign_import)(name, library, symbol);
+			(*IR->foreign_import)(name, library, symbol, signature);
 	}
 }
 

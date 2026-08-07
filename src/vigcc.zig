@@ -69,7 +69,7 @@ fn compileToObject(init: std.process.Init, source: []const u8, output: []const u
     };
     try run(init, &.{ tools.cpp_path, host, "-I", tools.vig_include_path, source, preprocessed });
     try run(init, &.{ tools.rcc_path, "-target=vig", preprocessed, assembly });
-    try run(init, &.{ tools.vigasm_path, "-c", assembly, "-o", output });
+    try run(init, &.{ tools.vigasm_path, "-c", "--vig64", assembly, "-o", output });
 }
 
 fn linkObjects(
@@ -80,13 +80,13 @@ fn linkObjects(
     const allocator = init.arena.allocator();
     var command = std.ArrayList([]const u8).empty;
     try command.append(allocator, tools.vigld_path);
+    try command.append(allocator, "--vig64");
     try command.append(allocator, tools.crt0_path);
     try command.appendSlice(allocator, inputs);
-    // The C library is a library: a program takes the parts of it that it
-    // calls and none of the rest. That is what keeps a program that never asks
-    // the time from carrying the clock, and the host import the clock needs.
+    // VIG64 object selection is still being migrated. Link the runtime objects
+    // directly for now so a valid VIG64 C program does not depend on the VIG32
+    // lazy-library algorithm. This changes size only; it does not add a file API.
     try command.appendSlice(allocator, &.{
-        "--start-lib",
         tools.runtime_ctype_path,
         tools.runtime_errno_path,
         tools.runtime_math_path,
@@ -94,7 +94,6 @@ fn linkObjects(
         tools.runtime_stdlib_path,
         tools.runtime_string_path,
         tools.runtime_time_path,
-        "--end-lib",
     });
     try command.append(allocator, "-o");
     try command.append(allocator, output);

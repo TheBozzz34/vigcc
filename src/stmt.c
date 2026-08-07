@@ -12,8 +12,8 @@ float density = 0.5;
 Table stmtlabs;
 
 static int foldcond(Tree e1, Tree e2);
-static void caselabel(Swtch, long, int);
-static void cmp(int, Symbol, long, int);
+static void caselabel(Swtch, long long, int);
+static void cmp(int, Symbol, long long, int);
 static Tree conditional(int);
 static void dostmt(int, Swtch, int);
 static int equal(Symbol, Symbol);
@@ -161,7 +161,7 @@ void statement(int loop, Swtch swp, int lev) {
 		       	else {
 		       		if (rty != voidtype) {
 		       			warning("missing return value\n");
-		       			retcode(cnsttree(inttype, 0L));
+		       			retcode(cnsttree(inttype, 0LL));
 		       		} else
 		       			retcode(NULL);
 		       	}
@@ -361,12 +361,12 @@ static void swstmt(int loop, int lab, int lev) {
 	codelist->next = head->next;
 	codelist = tail;
 }
-static void caselabel(Swtch swp, long val, int lab) {
+static void caselabel(Swtch swp, long long val, int lab) {
 	int k;
 
 	if (swp->ncases >= swp->size)
 		{
-		long   *vals = swp->values;
+		long long *vals = swp->values;
 		Symbol *labs = swp->labels;
 		swp->size *= 2;
 		swp->values = newarray(swp->size, sizeof *swp->values, FUNC);
@@ -397,7 +397,7 @@ void swgen(Swtch swp) {
 	 * builds a table for a large one.  VIG has `jmp_indirect' now, so the
 	 * table half of the generator is reachable again. */
 	int *buckets, n;
-	long *v = swp->values;
+	long long *v = swp->values;
 
 	buckets = newarray(swp->ncases + 1, sizeof *buckets, FUNC);
 	for (n = k = 0; k < swp->ncases; k++, n++) {
@@ -410,7 +410,7 @@ void swgen(Swtch swp) {
 }
 void swcode(Swtch swp, int b[], int lb, int ub) {
 	int hilab, lolab, l, u, k = (lb + ub)/2;
-	long *v = swp->values;
+	long long *v = swp->values;
 
 	if (k > lb && k < ub) {
 		lolab = genlabel(1);
@@ -476,7 +476,7 @@ void swcode(Swtch swp, int b[], int lb, int ub) {
 		swcode(swp, b, k + 1, ub);
 	}
 }
-static void cmp(int op, Symbol p, long n, int lab) {
+static void cmp(int op, Symbol p, long long n, int lab) {
 	Type ty = signedint(p->type);
 
 	listnodes(eqtree(op,

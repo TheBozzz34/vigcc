@@ -2,6 +2,6 @@ global _start
 extern_symbol main function
 
 _start:
-    call main
+    call64 main
     pop
     halt

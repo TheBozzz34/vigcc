@@ -914,7 +914,7 @@ void compound(int loop, struct swtch *swp, int lev) {
 		if (cp->kind != Jump) {
 			if (freturn(cfunc->type) != voidtype) {
 				warning("missing return value\n");
-				retcode(cnsttree(inttype, 0L));
+				retcode(cnsttree(inttype, 0LL));
 			} else
 				retcode(NULL);
 		}

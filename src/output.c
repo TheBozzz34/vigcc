@@ -40,6 +40,21 @@ static char *outu(unsigned long n, int base, FILE *f, char *bp) {
 	while ((n /= base) != 0);
 	return outs(s, f, bp);
 }
+static char *outq(long long n, FILE *f, char *bp) {
+	unsigned long long m;
+	char buf[32], *s = buf + sizeof buf;
+	*--s = '\0';
+	m = n < 0 ? -(unsigned long long)n : n;
+	do *--s = m%10 + '0'; while ((m /= 10) != 0);
+	if (n < 0) *--s = '-';
+	return outs(s, f, bp);
+}
+static char *outQ(unsigned long long n, int base, FILE *f, char *bp) {
+	char buf[32], *s = buf + sizeof buf;
+	*--s = '\0';
+	do *--s = "0123456789abcdef"[n%base]; while ((n /= base) != 0);
+	return outs(s, f, bp);
+}
 void print(const char *fmt, ...) {
 	va_list ap;
 
@@ -73,11 +88,15 @@ void vfprint(FILE *f, char *bp, const char *fmt, va_list ap) {
 		if (*fmt == '%')
 			switch (*++fmt) {
 			case 'd': bp = outd(va_arg(ap, int), f, bp); break;
-			case 'D': bp = outd(va_arg(ap, long), f, bp); break;
-			case 'U': bp = outu(va_arg(ap, unsigned long), 10, f, bp); break;
+			/* `%D', `%U' and `%X' write a target constant.  A `Value' holds a
+			 * `long long', so each one reads that and not a host `long':
+			 * on a Windows build the host type is half as wide.  `%q' and
+			 * `%Q' name the same two conversions. */
+			case 'D': case 'q': bp = outq(va_arg(ap, long long), f, bp); break;
+			case 'U': case 'Q': bp = outQ(va_arg(ap, unsigned long long), 10, f, bp); break;
 			case 'u': bp = outu(va_arg(ap, unsigned), 10, f, bp); break;
 			case 'o': bp = outu(va_arg(ap, unsigned), 8, f, bp); break;
-			case 'X': bp = outu(va_arg(ap, unsigned long), 16, f, bp); break;
+			case 'X': bp = outQ(va_arg(ap, unsigned long long), 16, f, bp); break;
 			case 'x': bp = outu(va_arg(ap, unsigned), 16, f, bp); break;
 			case 'f': case 'e':
 			case 'g': {
@@ -93,7 +112,7 @@ void vfprint(FILE *f, char *bp, const char *fmt, va_list ap) {
 				void *p = va_arg(ap, void *);
 				if (p)
 					bp = outs("0x", f, bp);
-				bp = outu((unsigned long)p, 16, f, bp);
+				bp = outQ((unsigned long long)p, 16, f, bp);
 				break;
 				  }
 			case 'c': if (f) fputc(va_arg(ap, int), f); else *bp++ = va_arg(ap, int); break;

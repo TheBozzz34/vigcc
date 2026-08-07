@@ -40,7 +40,7 @@ void *bsearch(const void *key, const void *base, size_t count, size_t size,
 
 int abs(int value);
 int atoi(const char *text);
-float strtod(const char *text, char **end);
-float atof(const char *text);
+double strtod(const char *text, char **end);
+double atof(const char *text);
 
 #endif

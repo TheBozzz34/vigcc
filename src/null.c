@@ -2,7 +2,7 @@
 #define I(f) null_##f
 
 static Node I(gen)(Node p) { return p; }
-static void I(address)(Symbol q, Symbol p, long n) {}
+static void I(address)(Symbol q, Symbol p, long long n) {}
 static void I(blockbeg)(Env *e) {}
 static void I(blockend)(Env *e) {}
 static void I(defaddress)(Symbol p) {}

@@ -103,7 +103,7 @@ static void emitSymbol(Symbol p) {
 }
 
 /* address - initialize q for addressing expression p+n */
-static void I(address)(Symbol q, Symbol p, long n) {
+static void I(address)(Symbol q, Symbol p, long long n) {
 	q->name = stringf("%s%s%D", p->name, n > 0 ? "+" : "", n);
 	(*IR->defsymbol)(q);
 	START; print("address "); emitSymbol(q); END;

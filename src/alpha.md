@@ -21,7 +21,7 @@
 #define LEFT_CHILD(p) ((p)->kids[0])
 #define RIGHT_CHILD(p) ((p)->kids[1])
 #define STATE_LABEL(p) ((p)->x.state)
-static void address(Symbol, Symbol, long);
+static void address(Symbol, Symbol, long long);
 static void blkfetch(int, int, int, int);
 static void blkloop(int, int, int, int, int, int[]);
 static void blkstore(int, int, int, int);
@@ -982,7 +982,7 @@ static void defconst(int suffix, int size, Value v) {
                 unsigned *p = (unsigned *)&d;
                 print(".long 0x%x\n.long 0x%x\n", p[swap], p[!swap]);
         } else if (suffix == P)
-                print(".quad 0x%X\n", v.p);
+                print(".quad 0x%X\n", (unsigned long long)v.p);
         else if (size == 1)
                 print(".byte 0x%x\n", suffix == I ? v.i : v.u);
         else if (size == 2)
@@ -1024,7 +1024,7 @@ static void defsymbol(Symbol p) {
                 p->x.name = p->name;
 }
 
-static void address(Symbol q, Symbol p, long n) {
+static void address(Symbol q, Symbol p, long long n) {
         if (p->scope == GLOBAL
         || p->sclass == STATIC || p->sclass == EXTERN)
                 q->x.name = stringf("%s%s%D", p->x.name,

@@ -252,13 +252,14 @@ int atoi(const char *text) {
 /* Read a decimal floating-point number, and report where it stopped.
  *
  * The digits are accumulated as an integer and scaled once at the end, so the
- * result rounds once rather than once per digit.  More than nine digits cannot
- * change a binary32, so the rest only move the exponent. */
-float strtod(const char *text, char **end) {
+ * result rounds once rather than once per digit.  Nine digits is what this
+ * reads: more than a binary32 can hold and fewer than a binary64 can, so a
+ * longer literal keeps its scale and loses its tail. */
+double strtod(const char *text, char **end) {
 	const char *start = text;
 	unsigned mantissa = 0;
 	int digits = 0, exponent = 0, negative = 0, seen = 0;
-	float value;
+	double value;
 
 	while (*text == ' ' || *text == 9 || *text == 10 || *text == 13)
 		text++;
@@ -290,7 +291,7 @@ float strtod(const char *text, char **end) {
 	if (!seen) {
 		if (end != 0)
 			*end = (char *)start;	/* nothing was a number */
-		return 0.0f;
+		return 0.0;
 	}
 	if (*text == 'e' || *text == 'E') {
 		const char *mark = text;
@@ -313,13 +314,13 @@ float strtod(const char *text, char **end) {
 			text = mark;	/* an `e' with no digits is not part of the number */
 	}
 
-	value = (float)mantissa;
+	value = (double)mantissa;
 	while (exponent > 0) {
-		value = value * 10.0f;
+		value = value * 10.0;
 		exponent--;
 	}
 	while (exponent < 0) {
-		value = value / 10.0f;
+		value = value / 10.0;
 		exponent++;
 	}
 	if (end != 0)
@@ -327,6 +328,6 @@ float strtod(const char *text, char **end) {
 	return negative ? -value : value;
 }
 
-float atof(const char *text) {
+double atof(const char *text) {
 	return strtod(text, 0);
 }

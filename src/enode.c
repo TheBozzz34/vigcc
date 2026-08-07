@@ -100,17 +100,24 @@ Tree call(Tree f, Type fty, Coordinate src) {
 		Tree prep = NULL, values;
 
 		if (count > 0) {
-			Symbol slots = temporary(AUTO, array(inttype, count, inttype->align));
+			/* One slot is one pointer wide, which is what `signedptr' names.
+			 * A promoted argument -- an `int', a `double' or a pointer -- fits
+			 * exactly one of them, so the array is not the width of an `int':
+			 * under VIG64 that would truncate every pointer and every double
+			 * it carried.  See `va_arg' in <stdarg.h>, which steps by the same
+			 * amount. */
+			int width = signedptr->size;
+			Symbol slots = temporary(AUTO,
+				array(signedptr, count, signedptr->align));
 			for (i = 0; i < count; i++) {
-				/* Every variable argument has been promoted, so each one is
-				 * four bytes and occupies one slot.  What it *is* still
-				 * differs: `printf("%s", text)' passes a pointer through the
-				 * same array that carries an int.  Therefore the address is
-				 * cast to the argument's own type before the store, rather
-				 * than the argument being forced into the array's. */
+				/* What a slot *is* still differs: `printf("%s", text)' passes a
+				 * pointer through the same array that carries an int.
+				 * Therefore the address is cast to the argument's own type
+				 * before the store, rather than the argument being forced into
+				 * the array's. */
 				Type slot = varargs[i]->type;
 				Tree address = simplify(ADD+P, voidptype,
-					pointer(idtree(slots)), consttree(4*i, signedptr));
+					pointer(idtree(slots)), consttree(width*i, signedptr));
 				Tree store = asgntree(ASGN,
 					rvalue(cast(address, ptr(slot))), varargs[i]);
 				prep = prep ? tree(RIGHT, voidtype, prep, root(store)) : root(store);
@@ -119,7 +126,7 @@ Tree call(Tree f, Type fty, Coordinate src) {
 		} else
 			values = cnsttree(voidptype, (void *)0);
 		args = tree(mkop(ARG, inttype), inttype,
-			cnsttree(inttype, (long)count), args);
+			cnsttree(inttype, (long long)count), args);
 		/* ARG's right child is emitted first, so wrap the count before the
 		 * pointer to leave them in ABI order after the fixed arguments. */
 		args = tree(mkop(ARG, values->type), values->type, values, args);
@@ -196,7 +203,7 @@ static Tree addtree(int op, Tree l, Tree r) {
 	else if (  isptr(r->type) && isint(l->type)
 	&& !isfunc(r->type->type))
 		{
-			long n;
+			long long n;
 			ty = unqual(r->type);
 			n = unqual(ty->type)->size;
 			if (n == 0)
@@ -224,18 +231,21 @@ Tree cnsttree(Type ty, ...) {
 
 	va_start(ap, ty);
 	switch (ty->op) {
-	case INT:     p->u.v.i = va_arg(ap, long); break;
-	case UNSIGNED:p->u.v.u = va_arg(ap, unsigned long)&ones(8*ty->size); break;
+	case INT:     p->u.v.i = va_arg(ap, long long); break;
+	case UNSIGNED:p->u.v.u = va_arg(ap, unsigned long long)&ones(8*ty->size); break;
 	case FLOAT:   p->u.v.d = va_arg(ap, long double);
 	              /* Narrow to the target's precision, exactly as the UNSIGNED
 	               * case above narrows to the target's width.  The folder works
-	               * in the compiler's own `long double', and every floating
-	               * point type here is binary32: without this, a folded constant
-	               * keeps digits the machine cannot hold, and `16777216.0f +
-	               * 1.0f == 16777216.0f' comes out false at compile time and
-	               * true at run time. */
+	               * in the compiler's own `long double', which is wider than
+	               * either VIG type: without this, a folded constant keeps
+	               * digits the machine cannot hold, and `16777216.0f + 1.0f ==
+	               * 16777216.0f' comes out false at compile time and true at
+	               * run time.  VIG64 has a binary64 `double', so the two sizes
+	               * narrow to different types. */
 	              if (ty->size == 4)
 	              	p->u.v.d = (float)p->u.v.d;
+	              else if (ty->size == 8)
+	              	p->u.v.d = (double)p->u.v.d;
 	              break;
 	case POINTER: p->u.v.p = va_arg(ap, void *); break;
 	default: assert(0);
@@ -244,11 +254,11 @@ Tree cnsttree(Type ty, ...) {
 	return p;
 }
 
-Tree consttree(int n, Type ty) {
+Tree consttree(long long n, Type ty) {
 	if (isarray(ty))
 		ty = atop(ty);
 	else assert(isint(ty));
-	return cnsttree(ty, (long)n);
+	return cnsttree(ty, (long long)n);
 }
 static Tree cmptree(int op, Tree l, Tree r) {
 	Type ty;
@@ -365,15 +375,15 @@ Tree asgntree(int op, Tree l, Tree r) {
 		else
 			error("assignment to const location\n");
 	if (l->op == FIELD) {
-		long n = 8*l->u.field->type->size - fieldsize(l->u.field);
+		long long n = 8*l->u.field->type->size - fieldsize(l->u.field);
 		if (n > 0 && isunsigned(l->u.field->type))
 			r = bittree(BAND, r,
-				cnsttree(r->type, (unsigned long)fieldmask(l->u.field)));
+				cnsttree(r->type, (unsigned long long)fieldmask(l->u.field)));
 		else if (n > 0) {
 			if (r->op == CNST+I) {
 				n = r->u.v.i;
-				if (n&(1<<(fieldsize(l->u.field)-1)))
-					n |= ~0UL<<fieldsize(l->u.field);
+				if (n&(1LL<<(fieldsize(l->u.field)-1)))
+					n |= ~0ULL<<fieldsize(l->u.field);
 				r = cnsttree(r->type, n);
 			} else
 				r = shtree(RSH,
@@ -535,7 +545,7 @@ Tree shtree(int op, Tree l, Tree r) {
 
 /* subtree - construct tree for l - r */
 static Tree subtree(int op, Tree l, Tree r) {
-	long n;
+	long long n;
 	Type ty = inttype;
 
 	if (isarith(l->type) && isarith(r->type)) {

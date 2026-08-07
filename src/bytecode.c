@@ -16,7 +16,7 @@ static void I(segment)(int n) {
 		}
 }
 
-static void I(address)(Symbol q, Symbol p, long n) {
+static void I(address)(Symbol q, Symbol p, long long n) {
 	q->x.name = stringf("%s%s%D", p->x.name, n > 0 ? "+" : "", n);
 }
 
@@ -38,7 +38,7 @@ static void I(defconst)(int suffix, int size, Value v) {
 		else
 			print("byte %d %u\n", size, v.u);
 		return;
-	case P: print("byte %d %U\n", size, (unsigned long)v.p); return;
+	case P: print("byte %d %U\n", size, (unsigned long long)v.p); return;
 	case F:
 		if (size == 4) {
 			float f = v.d;
@@ -66,7 +66,7 @@ static void I(defsymbol)(Symbol p) {
 		switch (optype(ttob(p->type))) {
 		case I: p->x.name = stringf("%D", p->u.c.v.i); break;
 		case U: p->x.name = stringf("%U", p->u.c.v.u); break;
-		case P: p->x.name = stringf("%U", p->u.c.v.p); break;
+		case P: p->x.name = stringf("%U", (unsigned long long)p->u.c.v.p); break;
 		default: assert(0);
 		}
 	else if (p->scope >= LOCAL && p->sclass == STATIC)

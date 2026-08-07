@@ -23,6 +23,7 @@ struct ForeignImport {
 	char *name;
 	char *library;
 	char *symbol;
+	char *signature;
 	ForeignImport *link;
 };
 static ForeignImport *foreign_imports;
@@ -36,7 +37,7 @@ static ForeignImport *foreign_import(char *name) {
 	return NULL;
 }
 
-static void I(foreign_import)(char *name, char *library, char *symbol) {
+static void I(foreign_import)(char *name, char *library, char *symbol, char *signature) {
 	ForeignImport *entry;
 
 	if (foreign_import(name) != NULL) {
@@ -47,6 +48,7 @@ static void I(foreign_import)(char *name, char *library, char *symbol) {
 	entry->name = name;
 	entry->library = library;
 	entry->symbol = symbol;
+	entry->signature = signature;
 	entry->link = foreign_imports;
 	foreign_imports = entry;
 }
@@ -110,12 +112,20 @@ static unsigned float_bits(long double value) {
 	return bits;
 }
 
+static unsigned long long double_bits(long double value) {
+	double narrowed = (double)value;
+	unsigned long long bits;
+
+	memcpy(&bits, &narrowed, sizeof bits);
+	return bits;
+}
+
 static void I(segment)(int n) {
 	/* VIGasm determines a label's region from the directive that follows it. */
 	(void)n;
 }
 
-static void I(address)(Symbol q, Symbol p, long n) {
+static void I(address)(Symbol q, Symbol p, long long n) {
 	if (n == 0)
 		q->x.name = p->x.name;
 	else
@@ -127,15 +137,17 @@ static void I(address)(Symbol q, Symbol p, long n) {
 }
 
 static void I(defaddress)(Symbol p) {
-	print("i32 %s\n", p->x.name);
+	print("i64 %s\n", p->x.name);
 }
 
 static void I(defconst)(int suffix, int size, Value v) {
 	if (suffix == F) {
-		if (size != 4)
-			error("vig: a %d-byte floating-point value is not supported\n", size);
-		else
+		if (size == 4)
 			print("i32 %d\n", (int)float_bits(v.d));
+		else if (size == 8)
+			print("i64 %q\n", (long long)double_bits(v.d));
+		else
+			error("vig: a %d-byte floating-point value is not supported\n", size);
 		return;
 	}
 	if (size == 1)
@@ -144,6 +156,8 @@ static void I(defconst)(int suffix, int size, Value v) {
 		print("i16 %d\n", (int)v.i);
 	else if (size == 4)
 		print("i32 %d\n", (int)v.i);
+	else if (size == 8)
+		print("i64 %q\n", (long long)v.i);
 	else
 		error("vig: data item of %d bytes is not supported\n", size);
 }
@@ -160,11 +174,13 @@ static void I(defsymbol)(Symbol p) {
 		switch (optype(ttob(p->type))) {
 		case I: p->x.name = stringf("%D", p->u.c.v.i); break;
 		case U: p->x.name = stringf("%U", p->u.c.v.u); break;
-		case P: p->x.name = stringf("%U", p->u.c.v.p); break;
+		case P: p->x.name = stringf("%U", (unsigned long long)p->u.c.v.p); break;
 		/* A float is named by the bits of its binary32 form, which is what
 		 * `push' takes.  Printing them as a signed decimal is exact: the
 		 * assembler reads that back into the same four bytes. */
-		case F: p->x.name = stringf("%d", (int)float_bits(p->u.c.v.d)); break;
+		case F:
+			p->x.name = p->type->size == 4 ? stringf("%d", (int)float_bits(p->u.c.v.d)) : stringf("%q", (long long)double_bits(p->u.c.v.d));
+			break;
 		default: assert(0);
 		}
 	else if (p->scope >= LOCAL && p->sclass == STATIC)
@@ -180,6 +196,7 @@ static void emit_load(int size, int unsigned_load) {
 	case 1: print(unsigned_load ? "load8_u\n" : "load8_s\n"); return;
 	case 2: print(unsigned_load ? "load16_u\n" : "load16_s\n"); return;
 	case 4: print("load32\n"); return;
+	case 8: print("load64_at\n"); return;
 	}
 	error("vig: load of %d bytes is not supported\n", size);
 }
@@ -189,6 +206,7 @@ static void emit_store(int size) {
 	case 1: print("store8\n"); return;
 	case 2: print("store16\n"); return;
 	case 4: print("store32\n"); return;
+	case 8: print("store64_at\n"); return;
 	}
 	error("vig: store of %d bytes is not supported\n", size);
 }
@@ -204,22 +222,34 @@ static char *foreign_argument_type(Type ty) {
 			error("vig: foreign callbacks are not supported\n");
 			return NULL;
 		}
-		return "ptr";
+		return "guest_ptr";
 	}
-	if (isenum(ty) || isint(ty))
+	if (isenum(ty) || isint(ty)) {
+		if (ty->size == 8)
+			return isunsigned(ty) ? "u64" : "i64";
 		return isunsigned(ty) ? "u32" : "i32";
+	}
+	if (isfloat(ty))
+		return ty->size == 8 ? "f64" : "f32";
 	error("vig: foreign argument type %t is not supported\n", ty);
 	return NULL;
 }
 
-static int foreign_return_type(Type ty) {
+static char *foreign_return_type(Type ty) {
 	ty = unqual(ty);
 	if (ty == voidtype)
-		return 1;
-	if ((isenum(ty) || isint(ty)) && ty->size == 4)
-		return 1;
-	error("vig: foreign result type %t is not supported (use void or a 32-bit integer)\n", ty);
-	return 0;
+		return "void";
+	if (isptr(ty))
+		return "guest_ptr";
+	if (isenum(ty) || isint(ty)) {
+		if (ty->size == 8)
+			return isunsigned(ty) ? "u64" : "i64";
+		return isunsigned(ty) ? "u32" : "i32";
+	}
+	if (isfloat(ty))
+		return ty->size == 8 ? "f64" : "f32";
+	error("vig: foreign result type %t is not supported\n", ty);
+	return NULL;
 }
 
 static int emit_foreign_extern(Symbol p, ForeignImport *entry) {
@@ -238,20 +268,25 @@ static int emit_foreign_extern(Symbol p, ForeignImport *entry) {
 		error("vig: variadic foreign import %s is not supported\n", p->name);
 		return 0;
 	}
-	if (!foreign_return_type(freturn(p->type)))
+	if (foreign_return_type(freturn(p->type)) == NULL)
 		return 0;
 	proto = p->type->u.f.proto;
 	if (proto[0] == voidtype)
 		proto++;
 	for (i = 0; proto[i]; i++) {
-		if (i == 4) {
-			error("vig: foreign import %s has more than four arguments\n", p->name);
+		if (i == 16) {
+			error("vig: foreign import %s has more than sixteen arguments\n", p->name);
 			return 0;
 		}
 		if (foreign_argument_type(proto[i]) == NULL)
 			return 0;
 	}
 	print("extern %s %s %s", p->x.name, entry->library, entry->symbol);
+	if (entry->signature != NULL) {
+		print(" %s\n", entry->signature);
+		return 1;
+	}
+	print(" %s", foreign_return_type(freturn(p->type)));
 	for (i = 0; proto[i]; i++)
 		print(" %s", foreign_argument_type(proto[i]));
 	print("\n");
@@ -278,31 +313,31 @@ static int frame_slot(Node p) {
 	if (p == NULL || (s = p->syms[0]) == NULL)
 		return -1;
 	if (specific(p->op) == ADDRF + P)
-		return s->x.offset/4;
-	if (specific(p->op) == ADDRL + P && s->x.offset%4 == 0)
-		return parameter_slots + s->x.offset/4;
+		return s->x.offset/8;
+	if (specific(p->op) == ADDRL + P && s->x.offset%8 == 0)
+		return parameter_slots + s->x.offset/8;
 	return -1;
 }
 
 static void emit_local_address(Symbol p) {
 	int off = p->x.offset;
 
-	if (off%4 == 0)
-		print("local_addr %d\n", parameter_slots + off/4);
+	if (off%8 == 0)
+		print("local_addr %d\n", parameter_slots + off/8);
 	else {
 		print("local_addr %d\n", parameter_slots);
-		print("push %d\n", off);
-		print("add\n");
+		print("push64 %d\n", off);
+		print("add64\n");
 	}
 }
 
 static void emit_local_offset(int off) {
-	if (off%4 == 0)
-		print("local_addr %d\n", parameter_slots + off/4);
+	if (off%8 == 0)
+		print("local_addr %d\n", parameter_slots + off/8);
 	else {
 		print("local_addr %d\n", parameter_slots);
-		print("push %d\n", off);
-		print("add\n");
+		print("push64 %d\n", off);
+		print("add64\n");
 	}
 }
 
@@ -318,28 +353,28 @@ static void emit_block_copy(Node p) {
 	slots = p->syms[2];
 	assert(slots);
 	dst = slots->x.offset;
-	src = dst + 4;
+	src = dst + 8;
 	size = p->syms[0]->u.c.v.i;
 
 	dumptree(p->kids[0]);
 	emit_local_offset(dst);
-	print("store32\n");
+	print("store64_at\n");
 	/* The right child is INDIRB: assignment needs its address, not a block
 	 * value (which has no scalar load instruction). */
 	assert(generic(p->kids[1]->op) == INDIR);
 	dumptree(p->kids[1]->kids[0]);
 	emit_local_offset(src);
-	print("store32\n");
+	print("store64_at\n");
 	for (i = 0; i < size; i++) {
 		emit_local_offset(src);
-		print("load32\n");
+		print("load64_at\n");
 		if (i)
-			print("push %d\nadd\n", i);
+			print("push64 %d\nadd64\n", i);
 		print("load8_u\n");
 		emit_local_offset(dst);
-		print("load32\n");
+		print("load64_at\n");
 		if (i)
-			print("push %d\nadd\n", i);
+			print("push64 %d\nadd64\n", i);
 		print("store8\n");
 	}
 }
@@ -349,7 +384,9 @@ static void dumptree(Node p) {
 	case CNST:
 		assert(!p->kids[0] && !p->kids[1]);
 		assert(p->syms[0] && p->syms[0]->x.name);
-		if (optype(p->op) == U)
+		if (opsize(p->op) == 8)
+			print("push64 %s\n", p->syms[0]->x.name);
+		else if (optype(p->op) == U)
 			print("push %d\n", (int)strtoul(p->syms[0]->x.name, NULL, 0));
 		else
 			print("push %s\n", p->syms[0]->x.name);
@@ -358,13 +395,13 @@ static void dumptree(Node p) {
 	case ADDRG:
 		assert(!p->kids[0] && !p->kids[1]);
 		assert(p->syms[0] && p->syms[0]->x.name);
-		print("push %s\n", p->syms[0]->x.name);
+		print("push64 %s\n", p->syms[0]->x.name);
 		return;
 
 	case ADDRF:
 		assert(!p->kids[0] && !p->kids[1]);
 		assert(p->syms[0]);
-		print("local_addr %d\n", p->syms[0]->x.offset/4);
+		print("local_addr %d\n", p->syms[0]->x.offset/8);
 		return;
 
 	case ADDRL:
@@ -377,7 +414,7 @@ static void dumptree(Node p) {
 		assert(p->kids[0] && !p->kids[1]);
 		/* Reading a whole slot of the frame is one instruction.  A narrower
 		 * read is not: `load_local' is 32 bits and says nothing about a sign. */
-		if (opsize(p->op) == 4) {
+		if (opsize(p->op) == 8) {
 			int slot = frame_slot(p->kids[0]);
 
 			if (slot >= 0) {
@@ -400,7 +437,7 @@ static void dumptree(Node p) {
 		dumptree(p->kids[1]);
 		/* `store_local' takes the value alone, so the address is never
 		 * computed.  The value has to be on the stack first either way. */
-		if (opsize(p->op) == 4) {
+		if (opsize(p->op) == 8) {
 			int slot = frame_slot(p->kids[0]);
 
 			if (slot >= 0) {
@@ -434,13 +471,13 @@ static void dumptree(Node p) {
 				return;
 			}
 			if (entry != NULL) {
+				/* The VIG64 import record names the result type, and a `void'
+				 * import leaves nothing behind.  So a void call needs no `pop'
+				 * here, exactly as a call to a void VIG function needs none:
+				 * the callee's `ret' pushes nothing either. */
 				print("foreign_call %s\n", p->kids[0]->syms[0]->x.name);
-				/* The foreign ABI always produces its 32-bit result.  A C void
-				 * call must discard that result before the next statement. */
-				if (optype(p->op) == V)
-					print("pop\n");
 			} else
-				print("call %s\n", p->kids[0]->syms[0]->x.name);
+				print("call64 %s\n", p->kids[0]->syms[0]->x.name);
 		} else {
 			dumptree(p->kids[0]);
 			print("call_indirect\n");
@@ -476,7 +513,7 @@ static void dumptree(Node p) {
 		 * else is a computed target -- a switch reaching its arm through a jump
 		 * table -- so the address is worked out and jumped to. */
 		if (specific(p->kids[0]->op) == ADDRG+P) {
-			print("jmp %s\n", p->kids[0]->syms[0]->x.name);
+			print("jmp64 %s\n", p->kids[0]->syms[0]->x.name);
 			return;
 		}
 		dumptree(p->kids[0]);
@@ -489,12 +526,12 @@ static void dumptree(Node p) {
 			/* `fneg' flips the sign bit, which is not what `0.0 - x' does: it
 			 * negates a zero and leaves a NaN a NaN. */
 			dumptree(p->kids[0]);
-			print("fneg\n");
+			print(opsize(p->op) == 8 ? "dneg\n" : "fneg\n");
 			return;
 		}
-		print("push 0\n");
+		print(opsize(p->op) == 8 ? "push64 0\n" : "push 0\n");
 		dumptree(p->kids[0]);
-		print("sub\n");
+		print(opsize(p->op) == 8 ? "sub64\n" : "sub\n");
 		return;
 
 	case CVF:
@@ -503,9 +540,13 @@ static void dumptree(Node p) {
 		assert(p->kids[0] && !p->kids[1]);
 		dumptree(p->kids[0]);
 		if (optype(p->op) == I)
-			print("f2i\n");
+			print(opsize(p->kids[0]->op) == 8 ? (opsize(p->op) == 8 ? "d2l\n" : "d2i\n") : "f2i\n");
 		else if (optype(p->op) == U)
-			print("f2u\n");
+			print(opsize(p->kids[0]->op) == 8 ? (opsize(p->op) == 8 ? "d2ul\n" : "d2u\n") : "f2u\n");
+		else if (optype(p->op) == F && opsize(p->op) == 8 && opsize(p->kids[0]->op) == 4)
+			print("f2d\n");
+		else if (optype(p->op) == F && opsize(p->op) == 4 && opsize(p->kids[0]->op) == 8)
+			print("d2f\n");
 		else if (optype(p->op) != F)
 			unsupported(p);
 		return;
@@ -515,7 +556,10 @@ static void dumptree(Node p) {
 		dumptree(p->kids[0]);
 		/* To a float, from a signed integer. */
 		if (optype(p->op) == F) {
-			print("i2f\n");
+			if (opsize(p->op) == 8)
+				print(opsize(p->kids[0]->op) == 8 ? "l2d\n" : "i2d\n");
+			else
+				print("i2f\n");
 			return;
 		}
 		if (opsize(p->op) == 1) {
@@ -531,7 +575,10 @@ static void dumptree(Node p) {
 		/* To a float, from an unsigned integer, which is a different
 		 * instruction: the same bits name a different number. */
 		if (optype(p->op) == F) {
-			print("u2f\n");
+			if (opsize(p->op) == 8)
+				print(opsize(p->kids[0]->op) == 8 ? "ul2d\n" : "u2d\n");
+			else
+				print("u2f\n");
 			return;
 		}
 		/* A narrowing conversion has to drop the high bits, exactly as the
@@ -559,17 +606,28 @@ static void dumptree(Node p) {
 			/* None of these traps.  IEEE-754 answers every one, so a division
 			 * by zero gives an infinity where `div' would fault. */
 			switch (generic(p->op)) {
-			case ADD: print("fadd\n"); return;
-			case SUB: print("fsub\n"); return;
-			case MUL: print("fmul\n"); return;
-			case DIV: print("fdiv\n"); return;
+			case ADD: print(opsize(p->op) == 8 ? "dadd\n" : "fadd\n"); return;
+			case SUB: print(opsize(p->op) == 8 ? "dsub\n" : "fsub\n"); return;
+			case MUL: print(opsize(p->op) == 8 ? "dmul\n" : "fmul\n"); return;
+			case DIV: print(opsize(p->op) == 8 ? "ddiv\n" : "fdiv\n"); return;
 			}
 			/* A remainder, a shift and the bitwise operations have no
 			 * floating-point form, and C does not ask for one. */
 			unsupported(p);
 			return;
 		}
-		switch (generic(p->op)) {
+		if (opsize(p->op) == 8) switch (generic(p->op)) {
+		case ADD:  print(optype(p->op) == U ? "add64_wrap\n" : "add64\n"); return;
+		case SUB:  print(optype(p->op) == U ? "sub64_wrap\n" : "sub64\n"); return;
+		case MUL:  print(optype(p->op) == U ? "mul64_wrap\n" : "mul64\n"); return;
+		case DIV:  print(optype(p->op) == U ? "div64_u\n" : "div64\n"); return;
+		case MOD:  print(optype(p->op) == U ? "mod64_u\n" : "mod64\n"); return;
+		case LSH:  print("shl64\n"); return;
+		case RSH:  print(optype(p->op) == U ? "shr64_u\n" : "shr64_s\n"); return;
+		case BAND: print("and64\n"); return;
+		case BOR:  print("or64\n"); return;
+		case BXOR: print("xor64\n"); return;
+		} else switch (generic(p->op)) {
 		case ADD:  print(optype(p->op) == U ? "add_wrap\n" : "add\n"); return;
 		case SUB:  print(optype(p->op) == U ? "sub_wrap\n" : "sub\n"); return;
 		case MUL:  print(optype(p->op) == U ? "mul_wrap\n" : "mul\n"); return;
@@ -586,7 +644,7 @@ static void dumptree(Node p) {
 	case BCOM:
 		assert(p->kids[0] && !p->kids[1]);
 		dumptree(p->kids[0]);
-		print("not\n");
+		print(opsize(p->op) == 8 ? "not64\n" : "not\n");
 		return;
 
 	case EQ: case NE: case GE: case GT: case LE: case LT:
@@ -598,17 +656,24 @@ static void dumptree(Node p) {
 			/* Each leaves the integer 1 or 0, so the branch below reads it
 			 * without knowing which kind of comparison produced it. */
 			switch (generic(p->op)) {
-			case EQ: print("feq\n"); break;
-			case NE: print("fne\n"); break;
-			case GE: print("fge\n"); break;
-			case GT: print("fgt\n"); break;
-			case LE: print("fle\n"); break;
-			case LT: print("flt\n"); break;
+			case EQ: print(opsize(p->op) == 8 ? "deq\n" : "feq\n"); break;
+			case NE: print(opsize(p->op) == 8 ? "dne\n" : "fne\n"); break;
+			case GE: print(opsize(p->op) == 8 ? "dge\n" : "fge\n"); break;
+			case GT: print(opsize(p->op) == 8 ? "dgt\n" : "fgt\n"); break;
+			case LE: print(opsize(p->op) == 8 ? "dle\n" : "fle\n"); break;
+			case LT: print(opsize(p->op) == 8 ? "dlt\n" : "flt\n"); break;
 			}
-			print("jmp_not_zero %s\n", p->syms[0]->x.name);
+			print("jmp_not_zero64 %s\n", p->syms[0]->x.name);
 			return;
 		}
-		switch (generic(p->op)) {
+		if (opsize(p->kids[0]->op) == 8) switch (generic(p->op)) {
+		case EQ: print("eq64\n"); break;
+		case NE: print("ne64\n"); break;
+		case GE: print(optype(p->kids[0]->op) == U ? "gte64_u\n" : "gte64\n"); break;
+		case GT: print(optype(p->kids[0]->op) == U ? "gt64_u\n" : "gt64\n"); break;
+		case LE: print(optype(p->kids[0]->op) == U ? "lte64_u\n" : "lte64\n"); break;
+		case LT: print(optype(p->kids[0]->op) == U ? "lt64_u\n" : "lt64\n"); break;
+		} else switch (generic(p->op)) {
 		case EQ: print("eq\n"); break;
 		case NE: print("ne\n"); break;
 		case GE: print(optype(p->op) == U ? "gte_u\n" : "gte\n"); break;
@@ -616,7 +681,7 @@ static void dumptree(Node p) {
 		case LE: print(optype(p->op) == U ? "lte_u\n" : "lte\n"); break;
 		case LT: print(optype(p->op) == U ? "lt_u\n" : "lt\n"); break;
 		}
-		print("jmp_not_zero %s\n", p->syms[0]->x.name);
+		print("jmp_not_zero64 %s\n", p->syms[0]->x.name);
 		return;
 	}
 
@@ -650,8 +715,8 @@ static void I(function)(Symbol f, Symbol caller[], Symbol callee[], int ncalls) 
 	(void)ncalls;
 	(*IR->segment)(CODE);
 	for (i = 0; caller[i] && callee[i]; i++) {
-		caller[i]->x.name = callee[i]->x.name = stringf("%d", 4*i);
-		caller[i]->x.offset = callee[i]->x.offset = 4*i;
+		caller[i]->x.name = callee[i]->x.name = stringf("%d", 8*i);
+		caller[i]->x.offset = callee[i]->x.offset = 8*i;
 	}
 	parameter_slots = i;
 	function_returns_value = f->type->type != voidtype;
@@ -661,16 +726,16 @@ static void I(function)(Symbol f, Symbol caller[], Symbol callee[], int ncalls) 
 	print("%s:\n", f->x.name);
 	if (f->sclass != STATIC)
 		print("global %s\n", f->x.name);
-	print("enter %d %d\n", parameter_slots, (maxoffset + 3)/4);
+	print("enter %d %d\n", parameter_slots, (maxoffset + 7)/8);
 	emitcode();
 	/* lcc leaves a label after an explicit return. It can be reached when a C
 	 * function falls off its end, and VIG requires every path to terminate. */
 	if (function_returns_value) {
 		if (struct_return_pointer) {
 			emit_local_address(struct_return_pointer);
-			print("load32\nret_val\n");
+			print("load64_at\nret_val\n");
 		} else
-			print("push 0\nret_val\n");
+			print("push64 0\nret_val\n");
 	}
 	else
 		print("ret\n");
@@ -740,7 +805,7 @@ static void I(local)(Symbol p) {
 	 * promises is about the fields of a structure, which fixes `sizeof' and
 	 * `offsetof'.  Where a function puts its own locals is its own business.
 	 */
-	offset = roundup(offset, 4);
+	offset = roundup(offset, 8);
 	p->x.name = stringf("%d", offset);
 	p->x.offset = offset;
 	offset += p->type->size;
@@ -768,17 +833,12 @@ Interface vigIR = {
 	1, 1, 0, /* char */
 	2, 2, 0, /* short */
 	4, 4, 0, /* int */
-	4, 4, 0, /* long */
-	4, 4, 0, /* long long: the 32-bit VIG representation */
+	8, 8, 0, /* long */
+	8, 8, 0, /* long long */
 	4, 4, 0, /* float */
-	/* There is no 64-bit float.  A slot is four bytes, `ret_val' returns one
-	 * slot, and the ABI passes every variadic argument as one; a double would
-	 * change all three.  So `double' and `long double' are binary32 too, which
-	 * is the one place this compiler quietly gives less precision than C asks
-	 * for.  See ABI.md. */
-	4, 4, 0, /* double */
-	4, 4, 0, /* long double */
-	4, 4, 0, /* T* */
+	8, 8, 0, /* double */
+	8, 8, 0, /* long double */
+	8, 8, 0, /* T* */
 	0, 1, 0, /* struct: no padding in the VIG ABI */
 	1,        /* little_endian */
 	0,        /* mulops_calls */

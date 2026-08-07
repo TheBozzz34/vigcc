@@ -36,8 +36,8 @@
 /* The sign bit is computed with an unsigned 1.  A signed `1<<31' overflows the
  * int it starts as, which is undefined and traps under a sanitizer.  The other
  * two shifts here already use `~0UL' and are unaffected. */
-#define extend(x,ty) ((x)&(1UL<<(8*(ty)->size-1)) ? (x)|((~0UL)<<(8*(ty)->size-1)) : (x)&ones(8*(ty)->size))
-#define ones(n) ((n)>=8*sizeof (unsigned long) ? ~0UL : ~((~0UL)<<(n)))
+#define extend(x,ty) ((x)&(1ULL<<(8*(ty)->size-1)) ? (x)|((~0ULL)<<(8*(ty)->size-1)) : (x)&ones(8*(ty)->size))
+#define ones(n) ((n)>=8*sizeof (unsigned long long) ? ~0ULL : ~((~0ULL)<<(n)))
 
 #define isqual(t)     ((t)->op >= CONST)
 #define unqual(t)     (isqual(t) ? (t)->type : (t))
@@ -82,9 +82,13 @@ typedef struct coord {
 } Coordinate;
 typedef struct table *Table;
 
+/* A target constant.  `long long' and not `long': VIG64 has a 64-bit
+ * `long' and the host `long' of a Windows build has 32 bits, so a host
+ * `long' cannot hold every value a VIG64 program can write.  `print' writes
+ * these two with its `%q' and `%Q' conversions. */
 typedef union value {
-	long i;
-	unsigned long u;
+	long long i;
+	unsigned long long u;
 	long double d;
 	void *p;
 	void (*g)(void);
@@ -124,7 +128,7 @@ typedef struct interface {
 	unsigned left_to_right:1;
 	unsigned wants_dag:1;
 	unsigned unsigned_char:1;
-void (*address)(Symbol p, Symbol q, long n);
+void (*address)(Symbol p, Symbol q, long long n);
 void (*blockbeg)(Env *);
 void (*blockend)(Env *);
 void (*defaddress)(Symbol);
@@ -152,7 +156,7 @@ void (*stabtype) (Symbol);
 	Xinterface x;
 /* Target-specific source directives.  The VIG target uses this to remember a
  * native-library import until `import' runs at the end of the translation. */
-void (*foreign_import)(char *name, char *library, char *symbol);
+void (*foreign_import)(char *name, char *library, char *symbol, char *signature);
 } Interface;
 typedef struct binding {
 	char *name;
@@ -229,7 +233,7 @@ struct code {
 		struct {
 			Symbol sym;
 			Symbol base;
-			long offset;
+			long long offset;
 		} addr;
 		struct {
 			Coordinate src;
@@ -241,7 +245,7 @@ struct code {
 			Symbol table;
 			Symbol deflab;
 			int size;
-			long *values;
+			long long *values;
 			Symbol *labels;
 		} swtch;
 
@@ -253,7 +257,7 @@ struct swtch {
 	Symbol deflab;
 	int ncases;
 	int size;
-	long *values;
+	long long *values;
 	Symbol *labels;
 };
 struct symbol {
@@ -448,7 +452,7 @@ extern Tree call(Tree, Type, Coordinate);
 extern Tree calltree(Tree, Type, Tree, Symbol);
 extern Tree condtree(Tree, Tree, Tree);
 extern Tree cnsttree(Type, ...);
-extern Tree consttree(int, Type);
+extern Tree consttree(long long, Type);
 extern Tree eqtree(int, Tree, Tree);
 extern int iscallb(Tree);
 extern Tree shtree(int, Tree, Tree);
@@ -522,7 +526,7 @@ extern int findcount(char *, int, int);
 extern Tree constexpr(int);
 extern int intexpr(int, int);
 extern Tree simplify(int, Type, Tree, Tree);
-extern int ispow2(unsigned long u);
+extern int ispow2(unsigned long long u);
 
 extern int reachable(int);
 
@@ -540,7 +544,7 @@ extern void swgen(Swtch);
 
 extern char * string(const char *str);
 extern char *stringn(const char *str, int len);
-extern char *stringd(long n);
+extern char *stringd(long long n);
 extern Symbol relocate(const char *name, Table src, Table dst);
 extern void use(Symbol p, Coordinate src);
 extern void locus(Table tp, Coordinate *cp);

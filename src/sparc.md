@@ -5,7 +5,7 @@
 #define LEFT_CHILD(p) ((p)->kids[0])
 #define RIGHT_CHILD(p) ((p)->kids[1])
 #define STATE_LABEL(p) ((p)->x.state)
-static void address(Symbol, Symbol, long);
+static void address(Symbol, Symbol, long long);
 static void blkfetch(int, int, int, int);
 static void blkloop(int, int, int, int, int, int[]);
 static void blkstore(int, int, int, int);
@@ -918,7 +918,7 @@ static void defstring(int n, char *str) {
                 print(".byte %d\n", (*s)&0377);
 }
 
-static void address(Symbol q, Symbol p, long n) {
+static void address(Symbol q, Symbol p, long long n) {
         if (p->scope == GLOBAL || p->sclass == STATIC || p->sclass == EXTERN)
                 q->x.name = stringf("%s%s%D", p->x.name, n >= 0 ? "+" : "", n);
         else {

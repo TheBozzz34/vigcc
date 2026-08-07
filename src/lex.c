@@ -150,7 +150,7 @@ static void *wcput(int c, void *cl);
 static void *scon(int q, void *put(int c, void *cl), void *cl);
 static int backslash(int q);
 static Symbol fcon(void);
-static Symbol icon(unsigned long, int, int);
+static Symbol icon(unsigned long long, int, int);
 static void ppnumber(char *);
 
 int gettok(void) {
@@ -255,7 +255,7 @@ int gettok(void) {
 			return ID;
 		case '0': case '1': case '2': case '3': case '4':
 		case '5': case '6': case '7': case '8': case '9': {
-			unsigned long n = 0;
+			unsigned long long n = 0;
 			if (limit - rcp < MAXLINE) {
 				cp = rcp - 1;
 				fillbuf();
@@ -274,7 +274,7 @@ int gettok(void) {
 						d = *rcp - 'A' + 10;
 					else
 						break;
-					if (n&~(~0UL >> 4))
+					if (n&~(~0ULL >> 4))
 						overflow = 1;
 					else
 						n = (n<<4) + d;
@@ -288,7 +288,7 @@ int gettok(void) {
 				for ( ; map[*rcp]&DIGIT; rcp++) {
 					if (*rcp == '8' || *rcp == '9')
 						err = 1;
-					if (n&~(~0UL >> 3))
+					if (n&~(~0ULL >> 3))
 						overflow = 1;
 					else
 						n = (n<<3) + (*rcp - '0');
@@ -306,7 +306,7 @@ int gettok(void) {
 				int overflow = 0;
 				for (n = *token - '0'; map[*rcp]&DIGIT; ) {
 					int d = *rcp++ - '0';
-					if (n > (ULONG_MAX - d)/10)
+					if (n > (ULLONG_MAX - d)/10)
 						overflow = 1;
 					else
 						n = 10*n + d;
@@ -694,31 +694,56 @@ int gettok(void) {
 		}
 	}
 }
-static Symbol icon(unsigned long n, int overflow, int base) {
-	if ((*cp=='u'||*cp=='U') && (cp[1]=='l'||cp[1]=='L')
-	||  (*cp=='l'||*cp=='L') && (cp[1]=='u'||cp[1]=='U')) {
-		tval.type = unsignedlong;
-		cp += 2;
-	} else if (*cp == 'u' || *cp == 'U') {
-		if (overflow || n > unsignedtype->u.sym->u.limits.max.i)
+static Symbol icon(unsigned long long n, int overflow, int base) {
+	int unsign = 0, longs = 0;
+
+	/* The suffix: an optional `u' and an optional length, in either order.
+	 * The length is `l' or `ll'.  Reading `ll' is what lets a header write a
+	 * 64-bit limit as `9223372036854775807LL'; without it the second `l'
+	 * became a preprocessing number and the constant was rejected. */
+	for (;;) {
+		if ((*cp == 'u' || *cp == 'U') && !unsign) {
+			unsign = 1;
+			cp += 1;
+		} else if ((*cp == 'l' || *cp == 'L') && longs == 0) {
+			longs = 1;
+			cp += 1;
+			if (*cp == 'l' || *cp == 'L') {
+				longs = 2;
+				cp += 1;
+			}
+		} else
+			break;
+	}
+	/* The type is the first one of the requested length or wider that holds
+	 * the value.  A value that no signed type of that length holds takes the
+	 * unsigned one, which is what C89 says for a decimal constant too. */
+	if (unsign) {
+		if (longs >= 2)
+			tval.type = unsignedlonglong;
+		else if (longs == 1)
+			tval.type = unsignedlong;
+		else if (overflow || n > unsignedtype->u.sym->u.limits.max.u)
 			tval.type = unsignedlong;
 		else
 			tval.type = unsignedtype;
-		cp += 1;
-	} else if (*cp == 'l' || *cp == 'L') {
-		if (overflow || n > longtype->u.sym->u.limits.max.i)
+	} else if (longs >= 2) {
+		if (overflow || n > (unsigned long long)longlong->u.sym->u.limits.max.i)
+			tval.type = unsignedlonglong;
+		else
+			tval.type = longlong;
+	} else if (longs == 1) {
+		if (overflow || n > (unsigned long long)longtype->u.sym->u.limits.max.i)
 			tval.type = unsignedlong;
 		else
 			tval.type = longtype;
-		cp += 1;
-	} else if (overflow || n > longtype->u.sym->u.limits.max.i)
+	} else if (overflow || n > (unsigned long long)longtype->u.sym->u.limits.max.i)
 		tval.type = unsignedlong;
-	else if (n > inttype->u.sym->u.limits.max.i)
+	else if (n > (unsigned long long)inttype->u.sym->u.limits.max.i)
 		tval.type = longtype;
-	else if (base != 10 && n > inttype->u.sym->u.limits.max.i)
-		tval.type = unsignedtype;
 	else
 		tval.type = inttype;
+	(void)base;
 	switch (tval.type->op) {
 	case INT:
 		if (overflow || n > tval.type->u.sym->u.limits.max.i) {
