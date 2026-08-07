@@ -211,6 +211,14 @@ fn compileRuntimeObject(
     compile.addFileArg(preprocessed);
     const assembly = compile.addOutputFileArg(b.fmt("{s}.vigas", .{name}));
 
+    // `rcc` reaches its input file with `freopen(path, "r", stdin)`. A build step
+    // is given no standard input at all, and reopening a stream that was never
+    // opened yields a handle that reports end of file at once rather than one
+    // that fails: `rcc` then reads nothing, warns that the translation unit is
+    // empty, and exits successfully with an empty object beside it. Asking for an
+    // empty standard input gives it a real stream to reopen.
+    compile.setStdIn(.{ .bytes = "" });
+
     const assemble = b.addRunArtifact(vigasm);
     assemble.step.dependOn(&compile.step);
     assemble.addArg("-c");
