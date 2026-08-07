@@ -20,7 +20,7 @@
  * them still compiles.
  */
 
-int vig_errno;
+extern int vig_errno;
 
 #define errno vig_errno
 

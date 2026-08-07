@@ -1,3 +1,4 @@
+#define VIG_CLOCK
 #ifndef VIG_TIME_H
 #define VIG_TIME_H
 

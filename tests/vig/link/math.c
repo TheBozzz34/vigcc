@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 int total;
 static int increment = 1;
 

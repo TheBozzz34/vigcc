@@ -82,6 +82,14 @@ fn linkObjects(
     try command.append(allocator, tools.vigld_path);
     try command.append(allocator, tools.crt0_path);
     try command.appendSlice(allocator, inputs);
+    try command.appendSlice(allocator, &.{
+        tools.runtime_ctype_path,
+        tools.runtime_errno_path,
+        tools.runtime_stdio_path,
+        tools.runtime_stdlib_path,
+        tools.runtime_string_path,
+        tools.runtime_time_path,
+    });
     try command.append(allocator, "-o");
     try command.append(allocator, output);
     try run(init, command.items);
