@@ -1,18 +1,8 @@
-#ifndef VIG_STDLIB_H
-#define VIG_STDLIB_H
-
 /* Allocation and the odds and ends of <stdlib.h>, written in C.
  *
- * The heap is an array in the zero-filled region, because that is the only
- * place a program can put one.  VIG has no `sbrk' and no instruction that
- * reports the frame pointer, so the space above the program image cannot be
- * used: nothing says how far down the frames have grown.  An array in `.bss'
- * costs no bytes in the program file and sits below the image end, where a
- * frame can never reach it.  See ABI.md.
- *
- * Define VIG_HEAP_SIZE before including this file to change how much.  The heap
- * has to fit in the memory the VM was given, which is 1 MiB unless `vig' was
- * run with --memory.
+ * The heap is an array in the zero-filled region of this object, because that
+ * is the only place a program can put one.  See <stdlib.h> for why, and for
+ * what VIG_HEAP_SIZE means.
  *
  * The allocator is the one from K&R: a circular free list, first fit, and
  * coalescing with either neighbour on free.  It is small enough to read, and a
@@ -25,12 +15,9 @@
 
 #include <errno.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <vig.h>
-
-#ifndef VIG_HEAP_SIZE
-#define VIG_HEAP_SIZE 65536
-#endif
 
 typedef struct vig_block {
 	struct vig_block *next;	/* the next free block, by address, wrapping */
@@ -262,4 +249,84 @@ int atoi(const char *text) {
 	return negative ? -value : value;
 }
 
-#endif
+/* Read a decimal floating-point number, and report where it stopped.
+ *
+ * The digits are accumulated as an integer and scaled once at the end, so the
+ * result rounds once rather than once per digit.  More than nine digits cannot
+ * change a binary32, so the rest only move the exponent. */
+float strtod(const char *text, char **end) {
+	const char *start = text;
+	unsigned mantissa = 0;
+	int digits = 0, exponent = 0, negative = 0, seen = 0;
+	float value;
+
+	while (*text == ' ' || *text == 9 || *text == 10 || *text == 13)
+		text++;
+	if (*text == '-' || *text == '+') {
+		negative = *text == '-';
+		text++;
+	}
+	while (*text >= '0' && *text <= '9') {
+		seen = 1;
+		if (digits < 9) {
+			mantissa = mantissa * 10u + (unsigned)(*text - '0');
+			digits++;
+		} else
+			exponent++;	/* past the precision: only the scale still matters */
+		text++;
+	}
+	if (*text == '.') {
+		text++;
+		while (*text >= '0' && *text <= '9') {
+			seen = 1;
+			if (digits < 9) {
+				mantissa = mantissa * 10u + (unsigned)(*text - '0');
+				digits++;
+				exponent--;
+			}
+			text++;
+		}
+	}
+	if (!seen) {
+		if (end != 0)
+			*end = (char *)start;	/* nothing was a number */
+		return 0.0f;
+	}
+	if (*text == 'e' || *text == 'E') {
+		const char *mark = text;
+		int power = 0, negative_power = 0, any = 0;
+
+		text++;
+		if (*text == '-' || *text == '+') {
+			negative_power = *text == '-';
+			text++;
+		}
+		while (*text >= '0' && *text <= '9') {
+			any = 1;
+			if (power < 1000)
+				power = power * 10 + (*text - '0');
+			text++;
+		}
+		if (any)
+			exponent = exponent + (negative_power ? -power : power);
+		else
+			text = mark;	/* an `e' with no digits is not part of the number */
+	}
+
+	value = (float)mantissa;
+	while (exponent > 0) {
+		value = value * 10.0f;
+		exponent--;
+	}
+	while (exponent < 0) {
+		value = value / 10.0f;
+		exponent++;
+	}
+	if (end != 0)
+		*end = (char *)text;
+	return negative ? -value : value;
+}
+
+float atof(const char *text) {
+	return strtod(text, 0);
+}

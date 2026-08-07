@@ -1,5 +1,3 @@
-#ifndef VIG_STRING_H
-#define VIG_STRING_H
 
 /* The string and memory functions, written in C.
  *
@@ -15,6 +13,7 @@
  */
 
 #include <stddef.h>
+#include <string.h>
 
 void *memcpy(void *destination, const void *source, size_t count) {
 	unsigned char *to = (unsigned char *)destination;
@@ -247,5 +246,3 @@ char *strpbrk(const char *text, const char *accept) {
 	}
 	return NULL;
 }
-
-#endif

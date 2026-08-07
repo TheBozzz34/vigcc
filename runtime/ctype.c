@@ -1,5 +1,3 @@
-#ifndef VIG_CTYPE_H
-#define VIG_CTYPE_H
 
 /* Character classification.
  *
@@ -19,6 +17,7 @@
  * these against 1 is relying on more than C gives it.
  */
 
+#include <ctype.h>
 #include <stdio.h>	/* for EOF */
 
 int isdigit(int c) {
@@ -76,5 +75,3 @@ int tolower(int c) {
 int toupper(int c) {
 	return islower(c) ? c - 'a' + 'A' : c;
 }
-
-#endif

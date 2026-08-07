@@ -100,12 +100,20 @@ pub fn build(b: *std.Build) void {
         .macos => "-DVIG_HOST_MACOS=1",
         else => "-DVIG_HOST_POSIX=1",
     };
-    const runtime_names = [_][]const u8{
-        "ctype", "errno", "stdio", "stdlib", "string", "time",
-    };
-    var runtime_objects: [runtime_names.len]std.Build.LazyPath = undefined;
-    for (runtime_names, 0..) |name, index| {
-        runtime_objects[index] = compileRuntimeObject(
+    const tool_options = b.addOptions();
+    tool_options.addOptionPath("cpp_path", cpp.getEmittedBin());
+    tool_options.addOptionPath("rcc_path", rcc.getEmittedBin());
+    tool_options.addOptionPath("vigasm_path", vigasm.getEmittedBin());
+    tool_options.addOptionPath("vigld_path", vigld.getEmittedBin());
+    tool_options.addOptionPath("crt0_path", crt0);
+
+    // Each of these becomes one `runtime_<name>_path` option. The name drives
+    // both the source and the option, so adding a file to the C library is one
+    // entry here and one line in the driver's link command.
+    for ([_][]const u8{
+        "ctype", "errno", "math", "stdio", "stdlib", "string", "time",
+    }) |name| {
+        tool_options.addOptionPath(b.fmt("runtime_{s}_path", .{name}), compileRuntimeObject(
             b,
             cpp,
             rcc,
@@ -114,21 +122,8 @@ pub fn build(b: *std.Build) void {
             runtime_host,
             b.fmt("runtime/{s}.c", .{name}),
             name,
-        );
+        ));
     }
-
-    const tool_options = b.addOptions();
-    tool_options.addOptionPath("cpp_path", cpp.getEmittedBin());
-    tool_options.addOptionPath("rcc_path", rcc.getEmittedBin());
-    tool_options.addOptionPath("vigasm_path", vigasm.getEmittedBin());
-    tool_options.addOptionPath("vigld_path", vigld.getEmittedBin());
-    tool_options.addOptionPath("crt0_path", crt0);
-    tool_options.addOptionPath("runtime_ctype_path", runtime_objects[0]);
-    tool_options.addOptionPath("runtime_errno_path", runtime_objects[1]);
-    tool_options.addOptionPath("runtime_stdio_path", runtime_objects[2]);
-    tool_options.addOptionPath("runtime_stdlib_path", runtime_objects[3]);
-    tool_options.addOptionPath("runtime_string_path", runtime_objects[4]);
-    tool_options.addOptionPath("runtime_time_path", runtime_objects[5]);
     tool_options.addOption(
         []const u8,
         "vig_include_path",

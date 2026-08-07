@@ -1,6 +1,4 @@
 #define VIG_CLOCK
-#ifndef VIG_TIME_H
-#define VIG_TIME_H
 
 /* Calendar time.
  *
@@ -34,23 +32,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-
-typedef int time_t;
-typedef int clock_t;
-
-#define CLOCKS_PER_SEC 1
-
-struct tm {
-	int tm_sec;	/* 0..60, the extra second being a leap second */
-	int tm_min;	/* 0..59 */
-	int tm_hour;	/* 0..23 */
-	int tm_mday;	/* 1..31 */
-	int tm_mon;	/* 0..11 */
-	int tm_year;	/* years since 1900 */
-	int tm_wday;	/* 0..6, Sunday is 0 */
-	int tm_yday;	/* 0..365 */
-	int tm_isdst;	/* always 0: there is no timezone information */
-};
+#include <time.h>
 
 #define VIG_SECONDS_PER_DAY 86400
 
@@ -387,5 +369,3 @@ time_t time(time_t *store) {
 clock_t clock(void) {
 	return (clock_t)-1;
 }
-
-#endif

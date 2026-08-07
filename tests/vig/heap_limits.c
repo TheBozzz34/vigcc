@@ -8,11 +8,15 @@
  * is never taken.  Freeing in descending index order takes the other one.  A
  * round in one direction alone passes with half of free deleted.
  */
-#define VIG_HEAP_SIZE 4096
 #include <stdio.h>
 #include <stdlib.h>
 
-#define BLOCKS 128
+/* The heap belongs to `runtime/stdlib.c', so VIG_HEAP_SIZE is what that object
+ * was built with and not something this program can choose.  BLOCKS therefore
+ * has to be large enough to exhaust whatever that is: each request costs its
+ * size rounded up to a block plus one block of header, so a heap of N bytes
+ * holds fewer than N/BLOCK_BYTES of them. */
+#define BLOCKS (VIG_HEAP_SIZE / BLOCK_BYTES)
 #define BLOCK_BYTES 64
 #define BIG_BYTES 2048
 

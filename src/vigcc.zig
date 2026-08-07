@@ -85,6 +85,7 @@ fn linkObjects(
     try command.appendSlice(allocator, &.{
         tools.runtime_ctype_path,
         tools.runtime_errno_path,
+        tools.runtime_math_path,
         tools.runtime_stdio_path,
         tools.runtime_stdlib_path,
         tools.runtime_string_path,
