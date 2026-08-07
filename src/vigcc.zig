@@ -82,7 +82,11 @@ fn linkObjects(
     try command.append(allocator, tools.vigld_path);
     try command.append(allocator, tools.crt0_path);
     try command.appendSlice(allocator, inputs);
+    // The C library is a library: a program takes the parts of it that it
+    // calls and none of the rest. That is what keeps a program that never asks
+    // the time from carrying the clock, and the host import the clock needs.
     try command.appendSlice(allocator, &.{
+        "--start-lib",
         tools.runtime_ctype_path,
         tools.runtime_errno_path,
         tools.runtime_math_path,
@@ -90,6 +94,7 @@ fn linkObjects(
         tools.runtime_stdlib_path,
         tools.runtime_string_path,
         tools.runtime_time_path,
+        "--end-lib",
     });
     try command.append(allocator, "-o");
     try command.append(allocator, output);
