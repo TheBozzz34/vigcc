@@ -1,0 +1,7 @@
+global _start
+extern_symbol main function
+
+_start:
+    call main
+    pop
+    halt

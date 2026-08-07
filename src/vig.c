@@ -11,6 +11,7 @@
 static int parameter_slots;
 static int function_returns_value;
 static Symbol struct_return_pointer;
+static int suppressed_common_space;
 static void dumptree(Node);
 
 /* A `#pragma vig import' names the native library and symbol that a C function
@@ -658,6 +659,8 @@ static void I(function)(Symbol f, Symbol caller[], Symbol callee[], int ncalls) 
 	maxargoffset = maxoffset = argoffset = offset = 0;
 	gencode(caller, callee);
 	print("%s:\n", f->x.name);
+	if (f->sclass != STATIC)
+		print("global %s\n", f->x.name);
 	print("enter %d %d\n", parameter_slots, (maxoffset + 3)/4);
 	emitcode();
 	/* lcc leaves a label after an explicit return. It can be reached when a C
@@ -697,6 +700,14 @@ static Node I(gen)(Node p) {
 }
 
 static void I(global)(Symbol p) {
+	if (p->u.seg == BSS && p->sclass != STATIC && !p->defined) {
+		print("common %s %d %d\n", p->x.name, p->type->size,
+			p->type->align);
+		suppressed_common_space = p->type->size;
+		return;
+	}
+	if (p->sclass != STATIC)
+		print("global %s\n", p->x.name);
 	print("%s:\n", p->x.name);
 }
 
@@ -711,7 +722,7 @@ static void I(import)(Symbol p) {
 		(void)emit_foreign_extern(p, entry);
 		return;
 	}
-	error("vig: external symbol %s requires a VIG runtime declaration\n", p->name);
+	print("extern_symbol %s %s\n", p->x.name, isfunc(p->type) ? "function" : "object");
 }
 
 static void I(local)(Symbol p) {
@@ -738,12 +749,15 @@ static void I(local)(Symbol p) {
 static void I(progbeg)(int argc, char *argv[]) {
 	(void)argc;
 	(void)argv;
-	print("entry _start\n_start:\ncall main\npop\nhalt\n");
 }
 
 static void I(progend)(void) {}
 
 static void I(space)(int n) {
+	if (suppressed_common_space == n) {
+		suppressed_common_space = 0;
+		return;
+	}
 	print("reserve %d\n", n);
 }
 

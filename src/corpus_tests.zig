@@ -71,13 +71,64 @@ test "each VIG C program produces its recorded output" {
         const actual = try run(&.{ options.vig_path, output });
         defer allocator.free(actual);
 
-        std.testing.expectEqualStrings(expected, actual) catch |err| {
+        expectSameOutput(expected, actual) catch |err| {
             std.debug.print("VIG C corpus case that failed: {s}.c\n", .{name});
             return err;
         };
     }
 }
 
+test "separate C objects link through crt0 and run" {
+    const allocator = std.testing.allocator;
+    const math_source = try std.fs.path.join(
+        allocator,
+        &.{ options.corpus_dir, "link", "math.c" },
+    );
+    defer allocator.free(math_source);
+    const main_source = try std.fs.path.join(
+        allocator,
+        &.{ options.corpus_dir, "link", "main.c" },
+    );
+    defer allocator.free(main_source);
+    const expected_path = try std.fs.path.join(
+        allocator,
+        &.{ options.corpus_dir, "link", "program.expected" },
+    );
+    defer allocator.free(expected_path);
+    const expected_output = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
+        expected_path,
+        allocator,
+        .limited(1 << 20),
+    );
+    defer allocator.free(expected_output);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const math_object = try tempPath(&tmp, allocator, "math.vigo");
+    defer allocator.free(math_object);
+    const main_object = try tempPath(&tmp, allocator, "main.vigo");
+    defer allocator.free(main_object);
+    const program = try tempPath(&tmp, allocator, "program.vig");
+    defer allocator.free(program);
+
+    allocator.free(try run(&.{ options.vigcc_path, "-c", math_source, "-o", math_object }));
+    allocator.free(try run(&.{ options.vigcc_path, "-c", main_source, "-o", main_object }));
+    allocator.free(try run(&.{ options.vigcc_path, math_object, main_object, "-o", program }));
+    const actual = try run(&.{ options.vig_path, program });
+    defer allocator.free(actual);
+    try expectSameOutput(expected_output, actual);
+}
+
+fn tempPath(
+    tmp: *std.testing.TmpDir,
+    allocator: std.mem.Allocator,
+    name: []const u8,
+) ![:0]u8 {
+    const file = try tmp.dir.createFile(std.testing.io, name, .{});
+    file.close(std.testing.io);
+    return tmp.dir.realPathFileAlloc(std.testing.io, name, allocator);
+}
 fn corpusPath(allocator: std.mem.Allocator, name: []const u8, extension: []const u8) ![]u8 {
     const file_name = try std.fmt.allocPrint(allocator, "{s}{s}", .{ name, extension });
     defer allocator.free(file_name);
@@ -101,6 +152,27 @@ test "every VIG C corpus source is covered" {
         }
     }
     try std.testing.expectEqual(@as(usize, 0), missing);
+}
+
+fn expectSameOutput(expected: []const u8, actual: []const u8) !void {
+    const allocator = std.testing.allocator;
+    const normalized_expected = try withoutCarriageReturns(allocator, expected);
+    defer allocator.free(normalized_expected);
+    const normalized_actual = try withoutCarriageReturns(allocator, actual);
+    defer allocator.free(normalized_actual);
+    try std.testing.expectEqualStrings(normalized_expected, normalized_actual);
+}
+
+fn withoutCarriageReturns(
+    allocator: std.mem.Allocator,
+    text: []const u8,
+) ![]u8 {
+    var normalized = std.ArrayList(u8).empty;
+    errdefer normalized.deinit(allocator);
+    for (text) |byte| {
+        if (byte != '\r') try normalized.append(allocator, byte);
+    }
+    return normalized.toOwnedSlice(allocator);
 }
 
 fn run(argv: []const []const u8) ![]u8 {
