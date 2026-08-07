@@ -6,6 +6,7 @@
     .dependencies = .{
         .vig_assembler = .{ .path = "../vig-assembler" },
         .vig = .{ .path = "../vig" },
+        .vig_linker = .{ .path = "../vig-linker" },
     },
-    .paths = .{ "build.zig", "build.zig.zon", "cpp", "lburg", "src", "tests", "tst" },
+    .paths = .{ "build.zig", "build.zig.zon", "cpp", "lburg", "runtime", "src", "tests", "tst" },
 }

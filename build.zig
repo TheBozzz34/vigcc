@@ -41,11 +41,11 @@ pub fn build(b: *std.Build) void {
     rcc.root_module.addCSourceFiles(.{
         .root = b.path("src"),
         .files = &.{
-            "alloc.c", "bind.c", "dag.c", "decl.c", "enode.c", "error.c",
-            "event.c", "expr.c", "gen.c", "init.c", "inits.c", "input.c",
-            "lex.c", "list.c", "main.c", "null.c", "output.c", "prof.c",
-            "profio.c", "simp.c", "stab.c", "stmt.c", "string.c", "sym.c",
-            "symbolic.c", "bytecode.c", "trace.c", "tree.c", "types.c", "vig.c",
+            "alloc.c",    "bind.c",     "dag.c",   "decl.c", "enode.c",  "error.c",
+            "event.c",    "expr.c",     "gen.c",   "init.c", "inits.c",  "input.c",
+            "lex.c",      "list.c",     "main.c",  "null.c", "output.c", "prof.c",
+            "profio.c",   "simp.c",     "stab.c",  "stmt.c", "string.c", "sym.c",
+            "symbolic.c", "bytecode.c", "trace.c", "tree.c", "types.c",  "vig.c",
         },
         .flags = c_flags,
     });
@@ -65,7 +65,7 @@ pub fn build(b: *std.Build) void {
     cpp.root_module.addCSourceFiles(.{
         .root = b.path("cpp"),
         .files = &.{
-            "cpp.c", "lex.c", "nlist.c", "tokens.c", "macro.c", "eval.c",
+            "cpp.c",     "lex.c",     "nlist.c",  "tokens.c", "macro.c", "eval.c",
             "include.c", "hideset.c", "getopt.c", "unix.c",
         },
         .flags = c_flags,
@@ -78,10 +78,23 @@ pub fn build(b: *std.Build) void {
     });
     const vigasm = assembler_package.artifact("vigasm");
 
+    const linker_package = b.dependency("vig_linker", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const vigld = linker_package.artifact("vigld");
+
+    const make_crt0 = b.addRunArtifact(vigasm);
+    make_crt0.addArg("-c");
+    make_crt0.addFileArg(b.path("runtime/crt0.vigas"));
+    make_crt0.addArg("-o");
+    const crt0 = make_crt0.addOutputFileArg("crt0.vigo");
     const tool_options = b.addOptions();
     tool_options.addOptionPath("cpp_path", cpp.getEmittedBin());
     tool_options.addOptionPath("rcc_path", rcc.getEmittedBin());
     tool_options.addOptionPath("vigasm_path", vigasm.getEmittedBin());
+    tool_options.addOptionPath("vigld_path", vigld.getEmittedBin());
+    tool_options.addOptionPath("crt0_path", crt0);
     tool_options.addOption(
         []const u8,
         "vig_include_path",
@@ -107,6 +120,8 @@ pub fn build(b: *std.Build) void {
     b.getInstallStep().dependOn(&install_vigasm.step);
 
     const rcc_step = b.step("rcc", "Build rcc and its lburg-generated tables");
+    const install_vigld = b.addInstallArtifact(vigld, .{});
+    b.getInstallStep().dependOn(&install_vigld.step);
     rcc_step.dependOn(&rcc.step);
 
     const vm_package = b.dependency("vig", .{
