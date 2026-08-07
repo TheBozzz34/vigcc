@@ -60,7 +60,7 @@ static void vig_pad(vig_sink *sink, int count, int fill) {
 
 /* The digits of `value' in `base', least significant first.  Returning them
  * reversed costs the caller a backwards loop and saves a second buffer. */
-static int vig_digits(unsigned value, unsigned base, int upper, char *out) {
+static int vig_digits(unsigned long value, unsigned long base, int upper, char *out) {
 	int length = 0;
 	char digit;
 
@@ -444,8 +444,9 @@ static int vig_format(vig_sink *sink, const char *format, va_list arguments) {
 	char digits[VIG_DIGITS_MAX];
 	const char *text;
 	int left, fill, width, length, negative, i, item;
-	int precision, has_precision;
-	unsigned value;
+	int precision, has_precision, longs;
+	unsigned long value;
+	long number;
 	char conversion;
 
 	while (*format != '\0') {
@@ -462,6 +463,7 @@ static int vig_format(vig_sink *sink, const char *format, va_list arguments) {
 			text = 0;
 			precision = 6;
 			has_precision = 0;
+			longs = 0;
 
 			while (*format == '-' || *format == '0') {
 				if (*format == '-')
@@ -485,27 +487,47 @@ static int vig_format(vig_sink *sink, const char *format, va_list arguments) {
 					format++;
 				}
 			}
+			/* A length modifier.  Under LP64 `l', `ll', `z', `j' and `t' all
+			 * name a 64-bit type, so one flag answers for them all; `h' and
+			 * `hh' name types that a variadic call has already promoted to
+			 * `int'; and `L' is a `long double', which is the same binary64
+			 * as a `double' here. */
+			while (*format == 'h')
+				format++;
+			if (*format == 'l') {
+				longs = 1;
+				format++;
+				if (*format == 'l')
+					format++;
+			} else if (*format == 'z' || *format == 'j' || *format == 't') {
+				longs = 1;
+				format++;
+			} else if (*format == 'L')
+				format++;
 			conversion = *format;
 			if (conversion != '\0')
 				format++;
 
 			if (conversion == 'd' || conversion == 'i') {
-				item = va_arg(arguments, int);
-				value = (unsigned)item;
-				if (item < 0) {
+				number = longs ? va_arg(arguments, long)
+					: (long)va_arg(arguments, int);
+				value = (unsigned long)number;
+				if (number < 0) {
 					negative = 1;
 					/* Negating as unsigned wraps rather than trapping, which
 					 * matters for the most negative value: it has no positive
-					 * counterpart and `0 - item' would overflow. */
-					value = 0u - value;
+					 * counterpart and `0 - number' would overflow. */
+					value = 0uL - value;
 				}
-				length = vig_digits(value, 10u, 0, digits);
+				length = vig_digits(value, 10uL, 0, digits);
 			} else if (conversion == 'u') {
-				value = (unsigned)va_arg(arguments, int);
-				length = vig_digits(value, 10u, 0, digits);
+				value = longs ? va_arg(arguments, unsigned long)
+					: (unsigned long)va_arg(arguments, unsigned);
+				length = vig_digits(value, 10uL, 0, digits);
 			} else if (conversion == 'x' || conversion == 'X') {
-				value = (unsigned)va_arg(arguments, int);
-				length = vig_digits(value, 16u, conversion == 'X', digits);
+				value = longs ? va_arg(arguments, unsigned long)
+					: (unsigned long)va_arg(arguments, unsigned);
+				length = vig_digits(value, 16uL, conversion == 'X', digits);
 			} else if (conversion == 'f' || conversion == 'F'
 			|| conversion == 'e' || conversion == 'E'
 			|| conversion == 'g' || conversion == 'G') {

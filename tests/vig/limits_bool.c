@@ -1,11 +1,10 @@
 /* <limits.h> and <stdbool.h>.
  *
  * The limit values were checked against the system C library: the same source
- * compiled natively prints the same numbers.  `long' is 32 bits on this
- * toolchain, which agrees with Windows but not with a 64-bit Unix, so that pair
- * is the one part of this file that is not portable to compare.  MB_LEN_MAX is
- * likewise a property of the platform: it is 1 here because this C subset has
- * no multibyte characters.
+ * compiled natively prints the same numbers.  VIG64 is LP64, so `long' and
+ * `long long' are both 64 bits; that agrees with a 64-bit Unix but not with
+ * Windows, where `long' is 32.  MB_LEN_MAX is likewise a property of the
+ * platform: it is 1 here because this C subset has no multibyte characters.
  *
  * The `bool' section is deliberately not oracle-compared: C99 `bool' is `_Bool'
  * and this compiler is C89, so `bool' is an `int' here.  The difference is
@@ -25,7 +24,8 @@ int main(void) {
     printf("schar:%d %d\n", SCHAR_MIN, SCHAR_MAX);
     printf("short:%d %d %d\n", SHRT_MIN, SHRT_MAX, USHRT_MAX);
     printf("int:%d %d %u\n", INT_MIN, INT_MAX, UINT_MAX);
-    printf("long:%d %d %u\n", (int)LONG_MIN, (int)LONG_MAX, (unsigned)ULONG_MAX);
+    printf("long:%ld %ld %lu\n", LONG_MIN, LONG_MAX, ULONG_MAX);
+    printf("llong:%lld %lld %llu\n", LLONG_MIN, LLONG_MAX, ULLONG_MAX);
     printf("mb:%d\n", MB_LEN_MAX);
 
     /* The limits are the real edges of the types: one step past either end
@@ -33,9 +33,10 @@ int main(void) {
     printf("edge:%d %d\n",
         (int)((unsigned)INT_MAX + 1u) == INT_MIN,
         (int)((unsigned)INT_MIN - 1u) == INT_MAX);
-    printf("width:%d %d %d\n",
+    printf("width:%d %d %d %d %d\n",
         (int)sizeof(char) * CHAR_BIT, (int)sizeof(short) * CHAR_BIT,
-        (int)sizeof(int) * CHAR_BIT);
+        (int)sizeof(int) * CHAR_BIT, (int)sizeof(long) * CHAR_BIT,
+        (int)sizeof(void *) * CHAR_BIT);
 
     /* Booleans that came from an operator hold exactly 0 or 1. */
     printf("bool:%d %d %d %d\n", yes, no, 1 == 1, 1 == 2);
