@@ -80,6 +80,9 @@ static const struct {
 	 * the instructions after it are unreachable.  The argument is dropped all
 	 * the same, to keep the stack check honest up to that point. */
 	{ "__vig_halt",         "pop\nhalt\n"         },
+	/* The square root leaves its answer, so unlike the others there is
+	 * nothing to discard: this is a call that returns a value. */
+	{ "__vig_sqrt",         "fsqrt\n"        },
 };
 
 /* The instructions that a call to `p` becomes, or null if `p` is an ordinary

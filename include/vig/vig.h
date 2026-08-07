@@ -26,6 +26,10 @@ void __vig_write(int byte);
  * call and then dropped: VIG keeps no exit status. */
 void __vig_halt(int status);
 
+/* The square root, which IEEE-754 specifies exactly and the VM therefore has an
+ * instruction for.  <math.h> gives it its C name. */
+float __vig_sqrt(float value);
+
 /* Native-library imports
  *
  * Map an ordinary, fully-prototyped C function declaration to a VIG foreign

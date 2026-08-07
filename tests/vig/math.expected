@@ -1,0 +1,22 @@
+sqrt:1111
+round:111111
+fabs:111
+fmod:111
+modf:11
+exp:1111
+log:1111
+roundtrip:1
+pow:11111
+sin:1111
+cos:111
+identity:1
+tan:11
+atan:1111
+atan2:1111
+asin:111
+hyper:111
+scale:111
+strtod:1111
+strtod:1.2500 [xyz]
+strtod:1
+failures:0
